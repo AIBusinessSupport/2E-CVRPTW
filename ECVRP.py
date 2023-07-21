@@ -80,7 +80,26 @@ class TwoECVrp:
         # Calculate the cost of the initial solution
         self.cost = self.calculate_cost(self.solution)
     
-        
+    def upload_params_from_excel(self):
+        #Load the Data from CSV file. 
+        df = pd.read_csv(self.path)
+        col_list = df.columns
+        params_dict = {
+            'Q1': [200],
+            'cost_ds_FE': [],
+            'fix_cost_FE': [50],
+            'truck_satellite': [],
+            'max_pass_satellite': [],
+            'Q2': [50],
+            'cost_ds_SE': [],
+            'fix_cost_SE': [25],
+            'coor_depot': [],
+            'coor_cap_cost_satellite': [],
+            'coor_demand_custo': []
+            
+        }
+        return 0
+    
     # Define the function to upload the parameters from .dat file
     def upload_params(self):
         '''
@@ -350,3 +369,4 @@ def output_csv(dat_file,max_iterations, num_solutions, neighborhood_size):
     final_path = os.path.join('CSV', title_)
     df.to_csv(final_path, index = False)        
 #e = TwoECVrp(path)                
+

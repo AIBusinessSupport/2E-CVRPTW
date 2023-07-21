@@ -1,0 +1,18 @@
+##----------Parameter Description---------##
+x: x coordinate
+y: y coordinate
+
+eet: lower boundary of fuzzy time window
+et:  lower boundary of time window
+lt:  upper boundary of time window
+llt: upper boundary of fuzzy time window
+d1:  lower boundary of fuzzy demand
+d:   expectation demand
+d2:  upper boundary of fuzzy demand
+st:  service time
+
+##----------Operation and Symbols---------##
+0: depot
+1: satellite
+2: customer
+ 
