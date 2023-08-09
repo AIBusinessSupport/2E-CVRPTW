@@ -8,70 +8,89 @@ import sklearn
 ## Define Path for Code Testing
 #path = "E:/Project/Upwork/Satellite_Algorithm/data/Set2a_E-n22-k4-s8-14.dat"   
 # Define the 2E-VRP class
+
+def time_penalty(t, time_window):
+    if t < time_window[0] or t > time_window[3]:
+        return 0
+    if t >= time_window[0] and t < time_window[1]:
+        return (t - time_window[0]) / (time_window[1] - time_window[0])
+    if t >= time_window[1] and t <= time_window[2]:
+        return 1
+    if t > time_window[2] and t <= time_window[3]:
+        return (time_window[3] - t) / (time_window[3] - time_window[2])
+        
 class TwoECVrp:
     
     def __init__(self, path):
         # Set the number of customers and depots
         self.path = path
-        params_dict = self.upload_params()
-        self.n_customers = len(params_dict['coor_demand_custo'])
-        self.n_satellite = len(params_dict['coor_cap_cost_satellite'])
+        params_dict = self.upload_params_from_excel()
+        self.n_customers = len(params_dict['coor_custo'])
+        self.n_satellite = len(params_dict['coor_satellite'])
         
         # Generate random demand for each customer
-        self.demand = []
-        self.cus_sumary = params_dict['coor_demand_custo']
-        for cus in self.cus_sumary:
-            self.demand.append(cus[2:])
-        self.demand = np.array(self.demand)
-          
+        self.demand = params_dict['fuzzy_demand']
+        #self.cus_sumary = params_dict['coor_demand_custo']
+        #for cus in self.cus_sumary:
+        #    self.demand.append(cus[2:])
+        #self.demand = np.array(self.demand)
+        
+        # Set the time windows of each customer
+        self.time_window = params_dict['time_window']
+        
+        # Set the Service Time of Satellite and Customers
+        self.st_satellite = params_dict['st_satellite']
+        self.st_customer = params_dict['st_customer']
         
         # Generate random distances between all nodes
         self.depot_to_sat_distances = np.zeros(self.n_satellite) # Distance between depot and satellite
         self.sat_to_cus_distances = np.zeros((self.n_satellite, self.n_customers)) # Distance between satellite and customers
         self.sat_to_sat_distances = np.zeros((self.n_satellite, self.n_satellite))
-        # Set the capacity of satellite (But Optional)
-        self.sat_cap = np.zeros(self.n_satellite)
         
         # Set the commissions of each satellite
         self.hs = np.zeros(self.n_satellite)
         for i in range(self.n_satellite):
-            self.sat_cap[i] = params_dict['coor_cap_cost_satellite'][i][3]
-            self.hs[i] = params_dict['coor_cap_cost_satellite'][i][4]
-            coor_sati = np.array(params_dict['coor_cap_cost_satellite'][i][0:2])
-            coor_depot = np.array(params_dict['coor_depot'][0])
-            self.depot_to_sat_distances[i] = sum((coor_sati - coor_depot) ** 2)
+            #self.sat_cap[i] = params_dict['coor_cap_cost_satellite'][i][3]
+            #self.hs[i] = params_dict['coor_cap_cost_satellite'][i][4]
+            coor_sati = np.array(params_dict['coor_satellite'][i])
+            coor_depot = np.array(params_dict['coor_depot'])
+            self.depot_to_sat_distances[i] = np.sqrt(sum((coor_sati - coor_depot) ** 2))
             
             for j in range(self.n_customers):
-                coor_cus = np.array(params_dict['coor_demand_custo'][j][0:2])
-                self.sat_to_cus_distances[i, j] = sum((coor_sati - coor_cus) ** 2)
+                coor_cus = np.array(params_dict['coor_custo'][j])
+                self.sat_to_cus_distances[i, j] = np.sqrt(sum((coor_sati - coor_cus) ** 2))
             
             for s in range(self.n_satellite):
-                coor_sats = np.array(params_dict['coor_cap_cost_satellite'][s][0:2])
-                self.sat_to_sat_distances[i, s] = sum((coor_sats - coor_sati) ** 2)    
+                coor_sats = np.array(params_dict['coor_satellite'][s])
+                self.sat_to_sat_distances[i, s] = np.sqrt(sum((coor_sats - coor_sati) ** 2))    
                 
         ## Define the distance between cus to cus
         self.cus_to_cus_distances = np.zeros((self.n_customers, self.n_customers))
         for i in range(self.n_customers):
             for j in range(self.n_customers):
-                coori = np.array(params_dict['coor_demand_custo'][i][0:2])
-                coorj = np.array(params_dict['coor_demand_custo'][j][0:2])
-                self.cus_to_cus_distances[i, j] = sum((coori - coorj)**2)
+                coori = np.array(params_dict['coor_custo'][i])
+                coorj = np.array(params_dict['coor_custo'][j])
+                self.cus_to_cus_distances[i, j] = np.sqrt(sum((coori - coorj)**2))
 
+        # Set the capacity of satellite (But Optional)
+        self.sat_cap = params_dict['max_cap_satellite']
         
         # Set the capacity of the vehicles
-        self.vehicle1_cap = params_dict['Q1'][0]
-        self.vehicle2_cap = params_dict['Q2'][0] 
+        self.vehicle1_cap = params_dict['Q1']
+        self.vehicle2_cap = params_dict['Q2'] 
         
         # Set the number of vehicles available at each depot
-        self.vehicle1_num = params_dict['truck_depot'][0]
-        self.vehicle2_num = params_dict['truck_satellite'][0]
+        #self.vehicle1_num = params_dict['truck_depot'][0]
+        #self.vehicle2_num = params_dict['truck_satellite'][0]
         
         # Set the limit pass of each satellite
-        self.sat_pass = params_dict['max_pass_satellite'][0]
+        #self.sat_pass = params_dict['max_pass_satellite'][0]
         
         # Set the cost the unit
-        self.unit_cost_1 = params_dict['cost_ds_FE'][0]
-        self.unit_cost_2 = params_dict['cost_ds_SE'][0]
+        self.unit_cost_1 = params_dict['cost_ds_FE']
+        self.unit_cost_2 = params_dict['cost_ds_SE']
+        self.fixed_cost_1 = params_dict['fix_cost_FE']
+        self.fixed_cost_2 = params_dict['fix_cost_SE']
         
         # Initialize the solution with a random assignment of customers to depots
         self.sat_solution = self.generate_init_sat_solutions()
@@ -85,20 +104,61 @@ class TwoECVrp:
         df = pd.read_csv(self.path)
         col_list = df.columns
         params_dict = {
-            'Q1': [200],
-            'cost_ds_FE': [],
-            'fix_cost_FE': [50],
-            'truck_satellite': [],
-            'max_pass_satellite': [],
-            'Q2': [50],
-            'cost_ds_SE': [],
-            'fix_cost_SE': [25],
+            'Q1': 200,
+            'cost_ds_FE': 1,
+            'fix_cost_FE': 50,
+            'st_satellite': [],
+            'Q2': 50,
+            'cost_ds_SE': 1,
+            'fix_cost_SE': 25,
+            'st_customer': [],
             'coor_depot': [],
-            'coor_cap_cost_satellite': [],
-            'coor_demand_custo': []
+            'max_cap_satellite': [],
+            'coor_satellite': [],
+            'coor_custo': [],
+            'fuzzy_demand': [],
+            'time_window': []
             
         }
-        return 0
+        '''
+        Assume that
+                Urban vehicle capacity=200 
+                Urban vehicle cost=50
+                City freighter capacity=50 
+                City freighter cost=25
+        '''
+        
+        ## Get the Parameters feom CSV file
+        depot = df[df['mark'] == 0]
+        satellite = df[df['mark'] == 1]
+        customer = df[df[df['mark'] == 2]]
+        
+        ## Coordincate of Depot
+        coor_depot = depot[col_list[1:3]].values
+        params_dict['coor_depot'] = coor_depot.tolist()
+        
+        ## Coordinate of Satellite
+        coor_sat = satellite[col_list[1:3]].values
+        st_sat = satellite[col_list[-2]].values
+        params_dict['coor_satellite'] = coor_sat.tolist()
+        params_dict['st_satellite'] = st_sat.tolist()
+            
+        ## Coordinate of Customers
+        st_cus = customer[col_list[-2]].values
+        coor_cus = customer[col_list[1:3]].values
+        params_dict['coor_custo'] = coor_cus.tolist()
+        params_dict['st_customer'] = st_cus.tolist()
+        
+        ## Fuzzy Demand of Customers
+        params_dict['fuzzy_demand'] = customer[col_list[-5: -2]].values.tolist()
+        
+        ## Time Window of Customers
+        params_dict['time_window'] = customer[col_list[3:7]].values.tolist()
+       
+        ## Define the max capacity of Satellites as 1e+8
+        params_dict['max_cap_satellite'] = [10**8] * coor_sat.shape[0]
+        
+        return params_dict
     
     # Define the function to upload the parameters from .dat file
     def upload_params(self):
@@ -176,30 +236,29 @@ class TwoECVrp:
         # Calculate the total cost of the solution
         cost = 0
         route1 = solution['depot_to_sat']
-        route2 = np.array(solution['sat_to_cus'])
+        route2 = solution['sat_to_cus']
         # Iterate over each depot
-        for route in route1:
-            l = len(route)
-            cost += self.depot_to_sat_distances[route[1]] + self.hs[route[1]]
-            cost += self.depot_to_sat_distances[route[l-2]] + self.hs[route[l-2]]
-            if l > 3:
-                for i in range(1, l-2):
-                    cost += self.sat_to_sat_distances[route[i], route[i+1]] + self.hs[route[i]]
-        cost *= self.unit_cost_1
-            # Get the indices of the customers assigned to this depot
-        for s in range(self.n_satellite):
-            cust = list(np.where(route2 == s))[0]
-            l = len(cust)
-            if l == 0:
-                continue
-            else:
-                cost += self.sat_to_cus_distances[s, cust[0]] * self.unit_cost_2+ self.hs[s]
-                cost += self.sat_to_cus_distances[s, cust[l-1]] * self.unit_cost_2+ self.hs[s]
-                if l > 1:
-                    for c in range(l-1):
-                        cost += self.cus_to_cus_distances[cust[c], cust[c+1]] * self.unit_cost_2
+        for i in range(self.n_satellite):
+            current_time = 0
+            path = route1[i]
+            if len(path) > 0:
+                cost += len(path) * (2 * self.depot_to_sat_distances[i] * self.unit_cost_1 + self.fixed_cost_1)
+                current_time += self.depot_to_sat_distances[i]
+            # Cost for satellites to customers
+            if len(route2[i]) > 0:
+                for sub_path in route2[i]:
+                    if len(sub_path) > 0:
+                        for j in range(len(sub_path)):
+                            if j == 0:
+                                current_time += self.sat_to_cus_distances[i, sub_path[j]]
+                                cost += self.sat_to_cus_distances[i, sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
+                            else:
+                                current_time += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]]
+                                cost += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
+                        cost += self.sat_to_cus_distances[i, sub_path[-1]] * self.unit_cost_2 + self.fixed_cost_2
+                            
+         
         return cost
-               
     def vns_2(self, max_iterations, neighborhood_size):
         # Initialize the best solution and its cost
         best_solution = copy.deepcopy(self.solution)
@@ -275,59 +334,111 @@ class TwoECVrp:
         
         return best_solution, best_cost
     
-    def generate_init_sat_solutions(self):
+    ##---------Generate Initial Solution --------------##
+    def generate_init_sat_solutions(self, expected_demand):
     #    solutions = {'depot_to_sat': [],
     #                 'sat_to_cus': []}
         solutions = []
-        total_demands = sum(self.demand)
         ### Get the solution of satellites to customers first
         sat_cap1 = np.zeros(self.n_satellite)
-        for i in range(self.n_customers):
-            sat_ind = 0
-            #sat_cap_filt = sat_cap1[np.where(sat_cap1 >= self.demand[i])]
-            sat_cap_filt_ind = list(np.where(sat_cap1 <= self.sat_cap - self.demand[i]))[0]
-            rand_ind = random.randint(0, len(sat_cap_filt_ind)-1)
-         #   min_ind = np.argmin(self.sat_to_cus_distances[sat_cap_filt_ind.tolist(), i])
-            solutions.append(sat_cap_filt_ind[rand_ind])
-            sat_cap1[sat_cap_filt_ind[rand_ind]] += self.demand[i]
-        return solutions    
+        for j in range(self.n_satellite):
+            solutions.append([])
+        for i in range(self.n_customers): 
+            depot_to_cus = self.sat_to_cus_distances[:, i] + self.depot_to_sat_distances
+            t = np.array([time_penalty(depot_to_cus[i], self.time_window[i]) for i in range(self.n_satellite)])
+            idx = np.argmax(t)
+            solutions[idx].append([i])
+            sat_cap1[idx] += expected_demand[i]
+        return solutions, sat_cap1    
         ### Get the solution of depot to satellites
-    def generate_depot_solutions(self, solutions):
+    
+    def optimize_double_sub_sat_solution(self, sat_idx, sub_sub_solution):
+        if len(sub_sub_solution) == 0:
+            return sub_sub_solution, 0
+        
+        ## Define the cost function of sub_sub_solution
+        def sub_cost(current_time, sub_path):
+            cost = 0
+            if len(sub_path) == 0:
+                return 0
+            for j in range(len(sub_path)):
+                if j == 0:
+                    current_time += self.sat_to_cus_distances[sat_idx, sub_path[j]]
+                    cost += self.sat_to_cus_distances[sat_idx, sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
+                else:
+                    current_time += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]]
+                    cost += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
+            cost += self.sat_to_cus_distances[sat_idx, sub_path[-1]] * self.unit_cost_2 + self.fixed_cost_2
+            return cost
+        
+        max_iteration = len(sub_sub_solution) ** 2
+        best_solution = sub_sub_solution
+        timestart = self.depot_to_sat_distances[sat_idx]
+        best_cost = sub_cost(timestart, sub_sub_solution)
+        ## Implement Tabu Search
+        if len(sub_sub_solution) > 1:
+            for iter in range(max_iteration):
+                idx1, idx2 = np.random.randint(0, len(sub_sub_solution), 2)
+                neighbor_solution = best_solution.copy()
+                #Swap
+                neighbor_solution[idx1], neighbor_solution[idx2] = neighbor_solution[idx2], neighbor_solution[idx1]
+                if sub_cost(timestart, neighbor_solution) < best_cost:
+                    best_solution = neighbor_solution
+                    best_cost = sub_cost(timestart, neighbor_solution)
+            
+        return best_solution, best_cost
+        
+    def optimize_sub_sat_solution(self, sat_idx, sub_solution):
+        if len(sub_solution) == 0:
+            return sub_solution, 0
+        best_solution = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[0] for sub_sub_solution in sub_solution]
+        best_cost = sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in sub_solution])
+        max_iteration = sum([len(sub_sub_solution) for sub_sub_solution in sub_solution]) ** 2
+        ## Implement Tabu Search
+        step = 0
+        while len(best_solution) > 1 and step < max_iteration:
+            idx1, idx2 = np.random.randint(0, len(best_solution), 2)
+            permutation_prob = random.random()
+            current_solution = best_solution.copy()
+            if permutation_prob >= 0.5:
+                transfer_idx = np.random.randint(0, len(current_solution[idx2]))
+                current_solution[idx1].append(current_solution[idx2][transfer_idx])
+                current_solution[idx2].remove(current_solution[idx2][transfer_idx])
+                if len(current_solution[idx2]) == 0:
+                    current_solution.remove(current_solution[idx2])
+            else:
+                transfer_idx1, transfer_idx2 = np.random.randint(0, len(current_solution[idx1])), np.random.randint(0, len(current_solution[idx2]))
+                a, b = current_solution[idx1][transfer_idx1], current_solution[idx2][transfer_idx2]
+                ##SWAP
+                current_solution[idx1].remove(a)
+                current_solution[idx1].append(b) 
+                #-----
+                current_solution[idx2].remove(b) 
+                current_solution[idx2].append(a) 
+            if sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution]) < best_cost:
+                best_solution = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[0] for sub_sub_solution in current_solution]
+                best_cost = sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution])
+        
+        return best_solution, best_cost
+            
+    
+    def generate_depot_solutions(self, expected_demand):
         solution = {'depot_to_sat': [],
                      'sat_to_cus': []}    
-        solution['sat_to_cus'] = solutions
+        solution['sat_to_cus'] = self.generate_init_sat_solutions(expected_demand)[0]
+        
+        ## get the required amount of goods in each satellite
+        required_amount = self.generate_init_sat_solutions(expected_demand)[1]
+  
+            
+
         carry_mount = self.vehicle1_cap
-        sat_cap = np.zeros(self.n_satellite)
         for i in range(self.n_satellite):
-            ind = list(np.where(np.array(solutions) == i))[0]
-            if len(ind) > 0:
-                sat_cap[i] = sum(self.demand[ind])
-        sat_index = 0
-        while sat_index < self.n_satellite and sat_cap[self.n_satellite-1] > 0:
-            sat_list = [-1]
-            while carry_mount > 0 and sat_index < self.n_satellite:
-                sat_list.append(sat_index)
-                if sat_cap[sat_index] > carry_mount:
-                    sat_cap[sat_index] -= carry_mount 
-                    carry_mount = 0
-                    sat_list.append(-1) 
-                if sat_cap[sat_index] == carry_mount:
-                    sat_index += 1
-                    carry_mount = 0
-                    sat_list.append(-1)
-                if sat_cap[sat_index] < carry_mount:
-                    if sat_index < self.n_satellite - 1:
-                        carry_mount -= sat_cap[sat_index]
-                    #    sat_list.append(sat_index)
-                        sat_index += 1
-                    else: 
-                        sat_list.append(-1)
-                        sat_index = self.n_satellite
-                        carry_mount = 0    
-            solution['depot_to_sat'].append(sat_list)
-            sat_list = [-1]
-            carry_mount = self.vehicle1_cap                     
-                 
+            if required_amount[i] > 0:
+                n_move = int((required_amount[i]-1) / carry_mount) + 1
+                i_path = [-1] * n_move
+                solution['depot_to_sat'].append(i_path)
+                     
         return solution
     
     
