@@ -15,17 +15,17 @@ def KNN(path):
     graph = TwoECVrp(path=path)
     ## Get the useful info
     n_customers = graph.n_customers
-    cus_summary = np.array(graph.cus_sumary)
+    #cus_summary = np.array(graph.cus_sumary)
     
-    temp_demand = cus_summary[:, 2:]         ## Get the demands of customers, the shape is (n_customers, 3)
+    temp_demand = graph.demand         ## Get the demands of customers, the shape is (n_customers, 3)
     mean_demand = temp_demand[:,1]
-    coord_customers = cus_summary[:, 0:2]    ## Get the Coordinations of customers, the shape is (n_customers, 2)
+    coord_customers = graph.upload_params_from_excel()['coor_custo']    ## Get the Coordinations of customers, the shape is (n_customers, 2)
     
     ## Get the prediction of demand of each customers. i-th value is the predicted demands of i-th customers
     predict_demand = np.zeros(n_customers)
     for i in range(n_customers):
         # Process Training data X and labels y
-        X = coord_customers.tolist()
+        X = coord_customers
         y = mean_demand - np.min(mean_demand)
         y = y.tolist()
         

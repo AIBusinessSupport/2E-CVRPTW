@@ -6,7 +6,7 @@ import os
 import sys
 from ECVRP import TwoECVrp, scatter_search_vns, output_csv
 
-Data_Folder = 'data'
+Data_Folder = 'excel_params'
 
 for file in os.listdir(Data_Folder):
     #path = os.path.join(Data_Folder, file) 

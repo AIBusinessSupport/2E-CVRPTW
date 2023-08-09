@@ -5,6 +5,7 @@ import copy
 import scipy
 import pandas as pd
 import sklearn
+from demand.knn import KNN
 ## Define Path for Code Testing
 #path = "E:/Project/Upwork/Satellite_Algorithm/data/Set2a_E-n22-k4-s8-14.dat"   
 # Define the 2E-VRP class
@@ -30,6 +31,7 @@ class TwoECVrp:
         
         # Generate random demand for each customer
         self.demand = params_dict['fuzzy_demand']
+        self.expected_demand = KNN(self.path)
         #self.cus_sumary = params_dict['coor_demand_custo']
         #for cus in self.cus_sumary:
         #    self.demand.append(cus[2:])
@@ -93,8 +95,8 @@ class TwoECVrp:
         self.fixed_cost_2 = params_dict['fix_cost_SE']
         
         # Initialize the solution with a random assignment of customers to depots
-        self.sat_solution = self.generate_init_sat_solutions()
-        self.solution = self.generate_depot_solutions(self.sat_solution)
+        sat_solution = self.generate_init_sat_solutions()[0]
+        self.solution = self.generate_depot_solutions(sat_solution)
         
         # Calculate the cost of the initial solution
         self.cost = self.calculate_cost(self.solution)
@@ -128,7 +130,7 @@ class TwoECVrp:
                 City freighter cost=25
         '''
         
-        ## Get the Parameters feom CSV file
+        ## Get the Parameters from CSV file
         depot = df[df['mark'] == 0]
         satellite = df[df['mark'] == 1]
         customer = df[df[df['mark'] == 2]]
@@ -150,10 +152,10 @@ class TwoECVrp:
         params_dict['st_customer'] = st_cus.tolist()
         
         ## Fuzzy Demand of Customers
-        params_dict['fuzzy_demand'] = customer[col_list[-5: -2]].values.tolist()
+        params_dict['fuzzy_demand'] = customer[col_list[-5: -2]].values
         
         ## Time Window of Customers
-        params_dict['time_window'] = customer[col_list[3:7]].values.tolist()
+        params_dict['time_window'] = customer[col_list[3:7]].values
        
         ## Define the max capacity of Satellites as 1e+8
         params_dict['max_cap_satellite'] = [10**8] * coor_sat.shape[0]
@@ -231,7 +233,7 @@ class TwoECVrp:
                 num_line += 1
         return params_dict
                         
-        
+    ##--- Define the pre-optimized cost function        
     def calculate_cost(self, solution):
         # Calculate the total cost of the solution
         cost = 0
@@ -245,9 +247,10 @@ class TwoECVrp:
                 cost += len(path) * (2 * self.depot_to_sat_distances[i] * self.unit_cost_1 + self.fixed_cost_1)
                 current_time += self.depot_to_sat_distances[i]
             # Cost for satellites to customers
-            if len(route2[i]) > 0:
-                for sub_path in route2[i]:
-                    if len(sub_path) > 0:
+            ###if len(route2[i]) > 0:
+            ###    for sub_path in route2[i]:
+            cost += self.optimize_sub_sat_solution(i, route2[i])[1]
+            '''        if len(sub_path) > 0:
                         for j in range(len(sub_path)):
                             if j == 0:
                                 current_time += self.sat_to_cus_distances[i, sub_path[j]]
@@ -256,20 +259,20 @@ class TwoECVrp:
                                 current_time += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]]
                                 cost += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
                         cost += self.sat_to_cus_distances[i, sub_path[-1]] * self.unit_cost_2 + self.fixed_cost_2
-                            
+            '''                
          
         return cost
-    def vns_2(self, max_iterations, neighborhood_size):
+    def tabu(self, max_iterations, neighborhood_size):
         # Initialize the best solution and its cost
         best_solution = copy.deepcopy(self.solution)
         best_cost = self.cost
         
         # Set the initial neighborhood structure and its size
         neighborhood_structure = 1
-        neighborhood_size = neighborhood_size
+        neighbourhood_size = neighborhood_size
         
         # Define the maximum number of iterations for each neighborhood structure
-        max_iterations_per_structure = [20, 10]
+        max_iterations_per_structure = [2 * self.n_customers, self.n_customers]
         
         # Iterate over the specified number of iterations
         for i in range(max_iterations):
@@ -281,33 +284,66 @@ class TwoECVrp:
             if neighborhood_structure == 1:
                 # Swap two randomly selected customers between two randomly selected depots
                 sat1, sat2 = random.sample(range(self.n_satellite), 2)
-                indices1 = list(np.where(np.array(current_solution['sat_to_cus']) == sat1))[0]
-                indices2 = list(np.where(np.array(current_solution['sat_to_cus']) == sat2))[0]
+                indices1 = []
+                for a in current_solution['sat_to_cus'][sat1]:
+                    indices1 += a
+                indices2 = []
+                for b in current_solution['sat_to_cus'][sat2]:
+                    indices2 += b
                 if len(indices1) > 0 and len(indices2) > 0:
                     customer1 = random.choice(indices1)
                     customer2 = random.choice(indices2)
-                    current_solution['sat_to_cus'][customer1] = sat2
-                    current_solution['sat_to_cus'][customer2] = sat1
+                    indices1.remove(customer1)
+                    indices1.append(customer2)
+                    indices2.remove(customer2)
+                    indices2.append(customer1)
+                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
+                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])
                     current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
             else:
                 # Assign a randomly selected customer to a randomly selected depot
-                customer = random.choice(range(self.n_customers))
-                sat = random.choice(range(self.n_satellite))
-                current_solution['sat_to_cus'][customer] = sat
-                current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
+                sat1, sat2 = random.sample(range(self.n_satellite), 2)
+                indices1 = []
+                for a in current_solution['sat_to_cus'][sat1]:
+                    indices1 += a
+                indices2 = []
+                for b in current_solution['sat_to_cus'][sat2]:
+                    indices2 += b
+                if len(indices1) > 0:
+                    customer1 = random.choice(indices1)
+                    indices1.remove(customer1)
+                    indices2.append(customer1)
+                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
+                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])
+                    current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
+                if len(indices2) > 0:
+                    customer2 = random.choice(indices2)
+                    indices2.remove(customer2)
+                    indices1.append(customer2)
+                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
+                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])
+                    current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
             # Perform local search within the current neighborhood
             neighborhood_iterations = 0
             while neighborhood_iterations < max_iterations_per_structure[neighborhood_structure-1]:
                 # Swap two randomly selected customers between two randomly selected depots
                 sat1, sat2 = random.sample(range(self.n_satellite), 2)
-                indices1 = list(np.where(np.array(current_solution['sat_to_cus']) == sat1))[0]
-                indices2 = list(np.where(np.array(current_solution['sat_to_cus']) == sat2))[0]
+                indices1 = []
+                for a in current_solution['sat_to_cus'][sat1]:
+                    indices1 += a
+                indices2 = []
+                for b in current_solution['sat_to_cus'][sat2]:
+                    indices2 += b
                 if len(indices1) > 0 and len(indices2) > 0:
                     customer1 = random.choice(indices1)
                     customer2 = random.choice(indices2)
+                    indices1.remove(customer1)
+                    indices1.append(customer2)
+                    indices2.remove(customer2)
+                    indices2.append(customer1)
                     new_solution = copy.deepcopy(current_solution['sat_to_cus'])
-                    new_solution[customer1] = sat2
-                    new_solution[customer2] = sat1
+                    new_solution[sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
+                    new_solution[sat2] = self.optimize_sub_sat_solution(sat2, [[a] for a in indices2])
                     new_solution = self.generate_depot_solutions(new_solution)
                     # Calculate the cost of the new solution
                     new_cost = self.calculate_cost(new_solution)
@@ -324,18 +360,18 @@ class TwoECVrp:
                             
                             # Reset the neighborhood structure and size
                             neighborhood_structure = 1
-                            neighborhood_size = neighborhood_size
+                            neighbourhood_size = neighborhood_size
                 
                 neighborhood_iterations += 1
             
             # Update the neighborhood structure and size
             neighborhood_structure = (neighborhood_structure % 2) + 1
-            neighborhood_size += 1
+            neighbourhood_size += 1
         
         return best_solution, best_cost
     
     ##---------Generate Initial Solution --------------##
-    def generate_init_sat_solutions(self, expected_demand):
+    def generate_init_sat_solutions(self):
     #    solutions = {'depot_to_sat': [],
     #                 'sat_to_cus': []}
         solutions = []
@@ -348,7 +384,7 @@ class TwoECVrp:
             t = np.array([time_penalty(depot_to_cus[i], self.time_window[i]) for i in range(self.n_satellite)])
             idx = np.argmax(t)
             solutions[idx].append([i])
-            sat_cap1[idx] += expected_demand[i]
+            sat_cap1[idx] += self.expected_demand[i]
         return solutions, sat_cap1    
         ### Get the solution of depot to satellites
     
@@ -402,36 +438,42 @@ class TwoECVrp:
             current_solution = best_solution.copy()
             if permutation_prob >= 0.5:
                 transfer_idx = np.random.randint(0, len(current_solution[idx2]))
-                current_solution[idx1].append(current_solution[idx2][transfer_idx])
-                current_solution[idx2].remove(current_solution[idx2][transfer_idx])
+                if sum([self.expected_demand[i] for i in current_solution[idx1]]) + self.expected_demand[current_solution[idx2][transfer_idx]] <= self.vehicle2_cap:
+                    current_solution[idx1].append(current_solution[idx2][transfer_idx])
+                    current_solution[idx2].remove(current_solution[idx2][transfer_idx])
                 if len(current_solution[idx2]) == 0:
                     current_solution.remove(current_solution[idx2])
             else:
                 transfer_idx1, transfer_idx2 = np.random.randint(0, len(current_solution[idx1])), np.random.randint(0, len(current_solution[idx2]))
                 a, b = current_solution[idx1][transfer_idx1], current_solution[idx2][transfer_idx2]
-                ##SWAP
-                current_solution[idx1].remove(a)
-                current_solution[idx1].append(b) 
-                #-----
-                current_solution[idx2].remove(b) 
-                current_solution[idx2].append(a) 
+                if sum([self.expected_demand[i] for i in current_solution[idx1]]) - self.expected_demand[a] + self.expected_demand[b] <= self.vehicle2_cap and sum([self.expected_demand[i] for i in current_solution[idx2]]) + self.expected_demand[a] - self.expected_demand[b] <= self.vehicle2_cap:
+                    ##SWAP
+                    current_solution[idx1].remove(a)
+                    current_solution[idx1].append(b) 
+                    #-----
+                    current_solution[idx2].remove(b) 
+                    current_solution[idx2].append(a) 
             if sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution]) < best_cost:
                 best_solution = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[0] for sub_sub_solution in current_solution]
                 best_cost = sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution])
         
         return best_solution, best_cost
             
-    
-    def generate_depot_solutions(self, expected_demand):
+    ## Define the depot to satellite generation function with optimized route2
+    def generate_depot_solutions(self, solutions):
         solution = {'depot_to_sat': [],
                      'sat_to_cus': []}    
-        solution['sat_to_cus'] = self.generate_init_sat_solutions(expected_demand)[0]
-        
+        alter_solution = solutions
+        solution['sat_to_cus'] = [self.optimize_sub_sat_solution(i, alter_solution[i]) for i in range(self.n_satellite)]
         ## get the required amount of goods in each satellite
-        required_amount = self.generate_init_sat_solutions(expected_demand)[1]
-  
-            
-
+        required_amount = np.zeros(self.n_satellite)
+        for i in range(self.n_satellite):
+            if solution['sat_to_cus'][i] > 0:
+                for sub in solution['sat_to_cus'][i]:
+                    for sub1 in sub:
+                        required_amount += self.expected_demand[sub1]
+                        
+        ## Fill the depot to satellite solutions
         carry_mount = self.vehicle1_cap
         for i in range(self.n_satellite):
             if required_amount[i] > 0:
@@ -444,7 +486,7 @@ class TwoECVrp:
     
 def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size=2):
     # Generate a diverse set of initial solutions using scatter search
-    initial_s = twoevrp.generate_init_sat_solutions()
+    initial_s = twoevrp.generate_init_sat_solutions()[0]
     initial_solutions = twoevrp.generate_depot_solutions(initial_s)
 
     # Initialize the best solution and its cost
@@ -452,7 +494,7 @@ def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size
     best_cost = twoevrp.calculate_cost(best_solution)
 
     for i in range(num_solutions):
-        improved_solution, improved_cost = twoevrp.vns_2(max_iterations, neighborhood_size)
+        improved_solution, improved_cost = twoevrp.tabu(max_iterations, neighborhood_size)
         if improved_cost < best_cost:
             best_cost = improved_cost
             best_solution = improved_solution
@@ -465,9 +507,9 @@ def output_csv(dat_file,max_iterations, num_solutions, neighborhood_size):
     #Delete All old file from CSV Folder
     for file in os.listdir('CSV'):
         os.remove(os.path.join('CSV', file))
-    path = os.path.join('data', dat_file)
+    path = os.path.join('excel_params', dat_file)
     twoecvrp = TwoECVrp(path)
-    best_sol = scatter_search_vns(twoecvrp,max_iterations, num_solutions, neighborhood_size)
+    best_sol = scatter_search_vns(twoecvrp, max_iterations, num_solutions, neighborhood_size)
     best_cost = twoecvrp.calculate_cost(best_sol)
     
     data = {'Total_Cost': [best_cost], 
@@ -476,7 +518,7 @@ def output_csv(dat_file,max_iterations, num_solutions, neighborhood_size):
                 
     df = pd.DataFrame(data)
     print('-1 is the depot, other indice are satellite')
-    title_ = str(dat_file) + str('_') + str(max_iterations) + str('_') + str(num_solutions) + str('_') + str(neighborhood_size) + '.csv'
+    title_ = str(dat_file) + str('_') + str(max_iterations) + str('_') + str(num_solutions) + str('_') + 'tabu' + '.csv'
     final_path = os.path.join('CSV', title_)
     df.to_csv(final_path, index = False)        
 #e = TwoECVrp(path)                
