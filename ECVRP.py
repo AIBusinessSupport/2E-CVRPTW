@@ -7,7 +7,7 @@ import pandas as pd
 import sklearn
 from demand.knn import KNN
 ## Define Path for Code Testing
-#path = "E:/Project/Upwork/Satellite_Algorithm/data/Set2a_E-n22-k4-s8-14.dat"   
+path = 'excel_params/Ca1_2_3_15.csv'   
 # Define the 2E-VRP class
 
 def time_penalty(t, time_window):
@@ -31,11 +31,8 @@ class TwoECVrp:
         
         # Generate random demand for each customer
         self.demand = params_dict['fuzzy_demand']
-        self.expected_demand = KNN(self.path)
-        #self.cus_sumary = params_dict['coor_demand_custo']
-        #for cus in self.cus_sumary:
-        #    self.demand.append(cus[2:])
-        #self.demand = np.array(self.demand)
+        self.expected_demand = KNN(self.demand, params_dict['coor_custo'])
+        #self.expected_demand = self.demand[:,1]
         
         # Set the time windows of each customer
         self.time_window = params_dict['time_window']
@@ -55,7 +52,7 @@ class TwoECVrp:
             #self.sat_cap[i] = params_dict['coor_cap_cost_satellite'][i][3]
             #self.hs[i] = params_dict['coor_cap_cost_satellite'][i][4]
             coor_sati = np.array(params_dict['coor_satellite'][i])
-            coor_depot = np.array(params_dict['coor_depot'])
+            coor_depot = np.array(params_dict['coor_depot'][0])
             self.depot_to_sat_distances[i] = np.sqrt(sum((coor_sati - coor_depot) ** 2))
             
             for j in range(self.n_customers):
@@ -133,7 +130,7 @@ class TwoECVrp:
         ## Get the Parameters from CSV file
         depot = df[df['mark'] == 0]
         satellite = df[df['mark'] == 1]
-        customer = df[df[df['mark'] == 2]]
+        customer = df[df['mark'] == 2]
         
         ## Coordincate of Depot
         coor_depot = depot[col_list[1:3]].values
@@ -241,11 +238,10 @@ class TwoECVrp:
         route2 = solution['sat_to_cus']
         # Iterate over each depot
         for i in range(self.n_satellite):
-            current_time = 0
             path = route1[i]
+            print(path)
             if len(path) > 0:
                 cost += len(path) * (2 * self.depot_to_sat_distances[i] * self.unit_cost_1 + self.fixed_cost_1)
-                current_time += self.depot_to_sat_distances[i]
             # Cost for satellites to customers
             ###if len(route2[i]) > 0:
             ###    for sub_path in route2[i]:
@@ -297,8 +293,8 @@ class TwoECVrp:
                     indices1.append(customer2)
                     indices2.remove(customer2)
                     indices2.append(customer1)
-                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
-                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])
+                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])[0]
+                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])[0]
                     current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
             else:
                 # Assign a randomly selected customer to a randomly selected depot
@@ -313,15 +309,15 @@ class TwoECVrp:
                     customer1 = random.choice(indices1)
                     indices1.remove(customer1)
                     indices2.append(customer1)
-                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
-                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])
+                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])[0]
+                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])[0]
                     current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
                 if len(indices2) > 0:
                     customer2 = random.choice(indices2)
                     indices2.remove(customer2)
                     indices1.append(customer2)
-                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
-                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])
+                    current_solution['sat_to_cus'][sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])[0]
+                    current_solution['sat_to_cus'][sat2] = self.optimize_sub_sat_solution(sat2, [[b] for b in indices2])[0]
                     current_solution = self.generate_depot_solutions(current_solution['sat_to_cus'])
             # Perform local search within the current neighborhood
             neighborhood_iterations = 0
@@ -342,8 +338,8 @@ class TwoECVrp:
                     indices2.remove(customer2)
                     indices2.append(customer1)
                     new_solution = copy.deepcopy(current_solution['sat_to_cus'])
-                    new_solution[sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])
-                    new_solution[sat2] = self.optimize_sub_sat_solution(sat2, [[a] for a in indices2])
+                    new_solution[sat1] = self.optimize_sub_sat_solution(sat1, [[a] for a in indices1])[0]
+                    new_solution[sat2] = self.optimize_sub_sat_solution(sat2, [[a] for a in indices2])[0]
                     new_solution = self.generate_depot_solutions(new_solution)
                     # Calculate the cost of the new solution
                     new_cost = self.calculate_cost(new_solution)
@@ -395,15 +391,16 @@ class TwoECVrp:
         ## Define the cost function of sub_sub_solution
         def sub_cost(current_time, sub_path):
             cost = 0
+            current_time1 = current_time
             if len(sub_path) == 0:
                 return 0
             for j in range(len(sub_path)):
                 if j == 0:
-                    current_time += self.sat_to_cus_distances[sat_idx, sub_path[j]]
-                    cost += self.sat_to_cus_distances[sat_idx, sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
+                    current_time1 += self.sat_to_cus_distances[sat_idx, sub_path[j]]
+                    cost += self.sat_to_cus_distances[sat_idx, sub_path[j]] * self.unit_cost_2 - time_penalty(current_time1, self.time_window[sub_path[j]])
                 else:
-                    current_time += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]]
-                    cost += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
+                    current_time1 += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]]
+                    cost += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]] * self.unit_cost_2 - time_penalty(current_time1, self.time_window[sub_path[j]])
             cost += self.sat_to_cus_distances[sat_idx, sub_path[-1]] * self.unit_cost_2 + self.fixed_cost_2
             return cost
         
@@ -436,7 +433,7 @@ class TwoECVrp:
             idx1, idx2 = np.random.randint(0, len(best_solution), 2)
             permutation_prob = random.random()
             current_solution = best_solution.copy()
-            if permutation_prob >= 0.5:
+            if permutation_prob >= 0.2 and len(current_solution[idx2]) > 0:
                 transfer_idx = np.random.randint(0, len(current_solution[idx2]))
                 if sum([self.expected_demand[i] for i in current_solution[idx1]]) + self.expected_demand[current_solution[idx2][transfer_idx]] <= self.vehicle2_cap:
                     current_solution[idx1].append(current_solution[idx2][transfer_idx])
@@ -456,7 +453,7 @@ class TwoECVrp:
             if sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution]) < best_cost:
                 best_solution = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[0] for sub_sub_solution in current_solution]
                 best_cost = sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution])
-        
+            step += 1
         return best_solution, best_cost
             
     ## Define the depot to satellite generation function with optimized route2
@@ -464,14 +461,14 @@ class TwoECVrp:
         solution = {'depot_to_sat': [],
                      'sat_to_cus': []}    
         alter_solution = solutions
-        solution['sat_to_cus'] = [self.optimize_sub_sat_solution(i, alter_solution[i]) for i in range(self.n_satellite)]
+        solution['sat_to_cus'] = [self.optimize_sub_sat_solution(i, alter_solution[i])[0] for i in range(self.n_satellite)]
         ## get the required amount of goods in each satellite
         required_amount = np.zeros(self.n_satellite)
         for i in range(self.n_satellite):
-            if solution['sat_to_cus'][i] > 0:
+            if len(solution['sat_to_cus'][i]) > 0:
                 for sub in solution['sat_to_cus'][i]:
                     for sub1 in sub:
-                        required_amount += self.expected_demand[sub1]
+                        required_amount[i] += self.expected_demand[sub1]
                         
         ## Fill the depot to satellite solutions
         carry_mount = self.vehicle1_cap
@@ -480,6 +477,8 @@ class TwoECVrp:
                 n_move = int((required_amount[i]-1) / carry_mount) + 1
                 i_path = [-1] * n_move
                 solution['depot_to_sat'].append(i_path)
+            else: 
+                solution['depot_to_sat'].append([])
                      
         return solution
     
@@ -521,5 +520,5 @@ def output_csv(dat_file,max_iterations, num_solutions, neighborhood_size):
     title_ = str(dat_file) + str('_') + str(max_iterations) + str('_') + str(num_solutions) + str('_') + 'tabu' + '.csv'
     final_path = os.path.join('CSV', title_)
     df.to_csv(final_path, index = False)        
-#e = TwoECVrp(path)                
+e = TwoECVrp(path)                
 

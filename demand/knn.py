@@ -9,9 +9,10 @@ from sklearn.preprocessing import MinMaxScaler
 #Get the Distance between Customers
 def KNN(bound_demand, coord_cus):
    
-    
-    temp_demand = bound_demand         ## Get the demands of customers, the shape is (n_customers, 3)
-    mean_demand = temp_demand[:,1]
+    print(bound_demand)
+    print(coord_cus)
+    ## Get the demands of customers, the shape is (n_customers, 3)
+    mean_demand = bound_demand[:,1]
     coord_customers = coord_cus    ## Get the Coordinations of customers, the shape is (n_customers, 2)
     
     ## Get the prediction of demand of each customers. i-th value is the predicted demands of i-th customers
@@ -23,8 +24,8 @@ def KNN(bound_demand, coord_cus):
         y = y.tolist()
         
         # Remove i-th value
-        X.pop(i)
-        y.pop(i)
+        X.remove(X[i])
+        y.remove(y[i])
         
         # Normalize the data
         scaler = MinMaxScaler()
@@ -37,13 +38,13 @@ def KNN(bound_demand, coord_cus):
         
         # Get the prediction
         X_pred = []
-        X_pred.append(coord_customers[i].tolist())
+        X_pred.append(coord_customers[i])
         # Normalization
         X_pred = scaler.transform(X_pred)
         y_pred = model.predict(X_pred)[0] + np.min(mean_demand)
         
         # Get the real demand:
-        predict_demand[i] = min(temp_demand[i, 2], max(temp_demand[i, 0], y_pred))
+        predict_demand[i] = min(bound_demand[i, 2], max(bound_demand[i, 0], y_pred))
         
     return predict_demand     
         
