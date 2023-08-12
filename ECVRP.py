@@ -32,6 +32,7 @@ class TwoECVrp:
         # Generate random demand for each customer
         self.demand = params_dict['fuzzy_demand']
         self.expected_demand = KNN(self.demand, params_dict['coor_custo'])
+        self.real_demand = self.demand[:, 1]
         #self.expected_demand = self.demand[:,1]
         
         # Set the time windows of each customer
@@ -239,14 +240,16 @@ class TwoECVrp:
         # Iterate over each depot
         for i in range(self.n_satellite):
             path = route1[i]
+            current_time = 0
             print(path)
             if len(path) > 0:
                 cost += len(path) * (2 * self.depot_to_sat_distances[i] * self.unit_cost_1 + self.fixed_cost_1)
+                current_time += self.depot_to_sat_distances[i] + self.st_satellite[i]
             # Cost for satellites to customers
-            ###if len(route2[i]) > 0:
-            ###    for sub_path in route2[i]:
-            cost += self.optimize_sub_sat_solution(i, route2[i])[1]
-            '''        if len(sub_path) > 0:
+            if len(route2[i]) > 0:
+                for sub_path in route2[i]:
+            #cost += self.optimize_sub_sat_solution(i, route2[i])[1]
+                    if len(sub_path) > 0:
                         for j in range(len(sub_path)):
                             if j == 0:
                                 current_time += self.sat_to_cus_distances[i, sub_path[j]]
@@ -255,7 +258,7 @@ class TwoECVrp:
                                 current_time += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]]
                                 cost += self.cus_to_cus_distances[sub_path[j-1], sub_path[j]] * self.unit_cost_2 - time_penalty(current_time, self.time_window[sub_path[j]])
                         cost += self.sat_to_cus_distances[i, sub_path[-1]] * self.unit_cost_2 + self.fixed_cost_2
-            '''                
+                   
          
         return cost
     def tabu(self, max_iterations, neighborhood_size):
@@ -419,13 +422,15 @@ class TwoECVrp:
                     best_solution = neighbor_solution
                     best_cost = sub_cost(timestart, neighbor_solution)
             
-        return best_solution, best_cost
+        return [best_solution, best_cost]
         
     def optimize_sub_sat_solution(self, sat_idx, sub_solution):
         if len(sub_solution) == 0:
             return sub_solution, 0
-        best_solution = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[0] for sub_sub_solution in sub_solution]
-        best_cost = sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in sub_solution])
+        best_solution_cost = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution) for sub_sub_solution in sub_solution]
+        best_solution = [sol[0] for sol in best_solution_cost]
+        
+        best_cost = sum([sol[1] for sol in best_solution_cost])
         max_iteration = sum([len(sub_sub_solution) for sub_sub_solution in sub_solution]) ** 2
         ## Implement Tabu Search
         step = 0
@@ -433,14 +438,14 @@ class TwoECVrp:
             idx1, idx2 = np.random.randint(0, len(best_solution), 2)
             permutation_prob = random.random()
             current_solution = best_solution.copy()
-            if permutation_prob >= 0.2 and len(current_solution[idx2]) > 0:
+            if permutation_prob >= 0.4 and len(current_solution[idx2]) > 0:
                 transfer_idx = np.random.randint(0, len(current_solution[idx2]))
                 if sum([self.expected_demand[i] for i in current_solution[idx1]]) + self.expected_demand[current_solution[idx2][transfer_idx]] <= self.vehicle2_cap:
                     current_solution[idx1].append(current_solution[idx2][transfer_idx])
                     current_solution[idx2].remove(current_solution[idx2][transfer_idx])
                 if len(current_solution[idx2]) == 0:
                     current_solution.remove(current_solution[idx2])
-            else:
+            if permutation_prob <= 0.4 and len(current_solution[idx2]) > 0 and len(current_solution[idx1]) > 0:
                 transfer_idx1, transfer_idx2 = np.random.randint(0, len(current_solution[idx1])), np.random.randint(0, len(current_solution[idx2]))
                 a, b = current_solution[idx1][transfer_idx1], current_solution[idx2][transfer_idx2]
                 if sum([self.expected_demand[i] for i in current_solution[idx1]]) - self.expected_demand[a] + self.expected_demand[b] <= self.vehicle2_cap and sum([self.expected_demand[i] for i in current_solution[idx2]]) + self.expected_demand[a] - self.expected_demand[b] <= self.vehicle2_cap:
@@ -450,9 +455,10 @@ class TwoECVrp:
                     #-----
                     current_solution[idx2].remove(b) 
                     current_solution[idx2].append(a) 
-            if sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution]) < best_cost:
-                best_solution = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[0] for sub_sub_solution in current_solution]
-                best_cost = sum([self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution)[1] for sub_sub_solution in current_solution])
+            current_solution_cost = [self.optimize_double_sub_sat_solution(sat_idx, sub_sub_solution) for sub_sub_solution in current_solution]
+            if sum([sol[1] for sol in current_solution_cost]) < best_cost:
+                best_solution = [sol[0] for sol in current_solution_cost]
+                best_cost = sum([sol[1] for sol in current_solution_cost])
             step += 1
         return best_solution, best_cost
             
@@ -502,12 +508,13 @@ def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size
 
 ##Import Library
 import os
-def output_csv(dat_file,max_iterations, num_solutions, neighborhood_size):
+def output_csv(dat_file,max_iterations, neighborhood_size):
     #Delete All old file from CSV Folder
     for file in os.listdir('CSV'):
         os.remove(os.path.join('CSV', file))
     path = os.path.join('excel_params', dat_file)
     twoecvrp = TwoECVrp(path)
+    num_solutions = twoecvrp.n_satellite + 1
     best_sol = scatter_search_vns(twoecvrp, max_iterations, num_solutions, neighborhood_size)
     best_cost = twoecvrp.calculate_cost(best_sol)
     
