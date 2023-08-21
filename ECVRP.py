@@ -5,6 +5,8 @@ import copy
 import scipy
 import pandas as pd
 import sklearn
+import networkx as nx 
+import matplotlib.pyplot as plt
 from demand.knn import KNN
 ## Define Path for Code Testing
 path = 'excel_params/Ca1_2_3_15.csv'   
@@ -34,7 +36,8 @@ class TwoECVrp:
         self.expected_demand = KNN(self.demand, params_dict['coor_custo'])
         self.real_demand = self.demand[:, 1]
         #self.expected_demand = self.demand[:,1]
-        
+        self.points = [tuple(params_dict['coor_depot'][0])]
+        self.labels = {'D'}
         # Set the time windows of each customer
         self.time_window = params_dict['time_window']
         
@@ -52,6 +55,8 @@ class TwoECVrp:
         for i in range(self.n_satellite):
             #self.sat_cap[i] = params_dict['coor_cap_cost_satellite'][i][3]
             #self.hs[i] = params_dict['coor_cap_cost_satellite'][i][4]
+            self.labels[i+1] = 'Sat' + str(i)
+            self.points.append(tuple(params_dict['coor_satellite'][i]))
             coor_sati = np.array(params_dict['coor_satellite'][i])
             coor_depot = np.array(params_dict['coor_depot'][0])
             self.depot_to_sat_distances[i] = np.sqrt(sum((coor_sati - coor_depot) ** 2))
@@ -67,6 +72,8 @@ class TwoECVrp:
         ## Define the distance between cus to cus
         self.cus_to_cus_distances = np.zeros((self.n_customers, self.n_customers))
         for i in range(self.n_customers):
+            self.labels[i + 1 + self.n_satellite] = 'Cus' + str(i)
+            self.points.append(tuple(params_dict['coor_custo'][i]))
             for j in range(self.n_customers):
                 coori = np.array(params_dict['coor_custo'][i])
                 coorj = np.array(params_dict['coor_custo'][j])
@@ -508,7 +515,8 @@ def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size
 
 ##Import Library
 import os
-def output_csv(dat_file,max_iterations, neighborhood_size):
+
+def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     #Delete All old file from CSV Folder
     for file in os.listdir('CSV'):
         os.remove(os.path.join('CSV', file))
@@ -520,12 +528,15 @@ def output_csv(dat_file,max_iterations, neighborhood_size):
     
     data = {'Total_Cost': [best_cost], 
             'First_Route': [best_sol['depot_to_sat']], 
-            'Second_Route':[best_sol['sat_to_cus']]}
+            'Second_Route':[best_sol['sat_to_cus']],
+            'Expected_demand': [twoecvrp.expected_demand],
+            'Real_demand': [twoecvrp.real_demand]}
                 
     df = pd.DataFrame(data)
     print('-1 is the depot, other indice are satellite')
     title_ = str(dat_file) + str('_') + str(max_iterations) + str('_') + str(num_solutions) + str('_') + 'tabu' + '.csv'
     final_path = os.path.join('CSV', title_)
-    df.to_csv(final_path, index = False)        
+    df.to_csv(final_path, index = False)       
+     
 e = TwoECVrp(path)                
 
