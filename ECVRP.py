@@ -30,14 +30,24 @@ class TwoECVrp:
         params_dict = self.upload_params_from_excel()
         self.n_customers = len(params_dict['coor_custo'])
         self.n_satellite = len(params_dict['coor_satellite'])
-        
+        self.init_sat_amount = np.zeros(self.n_satellite)
         # Generate random demand for each customer
         self.demand = params_dict['fuzzy_demand']
         self.expected_demand = KNN(self.demand, params_dict['coor_custo'])
-        self.real_demand = self.demand[:, 1]
+        # Real Demand Simulation and Save in .txt file
+        self.real_demand = np.zeros(self.n_customers)
+        for i in range(self.n_customers):
+            rand_demand = np.random.normal(self.demand[i, 1], (self.demand[i, 2] - self.demand[i, 0])/6)
+            self.real_demand[i] = min(self.demand[i, 2], max(self.demand[i, 0], rand_demand))
+        with open('demand/demand_history.txt', 'a') as f:
+            f.write(str(rand_demand))
+            f.write('\n')
+            f.close()
+            
         #self.expected_demand = self.demand[:,1]
         self.points = [tuple(params_dict['coor_depot'][0])]
-        self.labels = {'D'}
+        self.labels = {}
+        self.labels[0] = 'D'
         # Set the time windows of each customer
         self.time_window = params_dict['time_window']
         
@@ -55,7 +65,7 @@ class TwoECVrp:
         for i in range(self.n_satellite):
             #self.sat_cap[i] = params_dict['coor_cap_cost_satellite'][i][3]
             #self.hs[i] = params_dict['coor_cap_cost_satellite'][i][4]
-            self.labels[i+1] = 'Sat' + str(i)
+            self.labels[i+1] = 'S' + str(i)
             self.points.append(tuple(params_dict['coor_satellite'][i]))
             coor_sati = np.array(params_dict['coor_satellite'][i])
             coor_depot = np.array(params_dict['coor_depot'][0])
@@ -72,7 +82,7 @@ class TwoECVrp:
         ## Define the distance between cus to cus
         self.cus_to_cus_distances = np.zeros((self.n_customers, self.n_customers))
         for i in range(self.n_customers):
-            self.labels[i + 1 + self.n_satellite] = 'Cus' + str(i)
+            self.labels[i + 1 + self.n_satellite] = 'C' + str(i)
             self.points.append(tuple(params_dict['coor_custo'][i]))
             for j in range(self.n_customers):
                 coori = np.array(params_dict['coor_custo'][i])
@@ -476,7 +486,7 @@ class TwoECVrp:
         alter_solution = solutions
         solution['sat_to_cus'] = [self.optimize_sub_sat_solution(i, alter_solution[i])[0] for i in range(self.n_satellite)]
         ## get the required amount of goods in each satellite
-        required_amount = np.zeros(self.n_satellite)
+        required_amount = np.zeros(self.n_satellite) - self.init_sat_amount
         for i in range(self.n_satellite):
             if len(solution['sat_to_cus'][i]) > 0:
                 for sub in solution['sat_to_cus'][i]:
@@ -494,8 +504,49 @@ class TwoECVrp:
                 solution['depot_to_sat'].append([])
                      
         return solution
+    ## Catch the arrived time
     
+    def get_edge(self, solution):
+        edge_list = []
+        for idx in range(len(solution['depot_to_sat'])):
+            if len(solution['depot_to_sat'][idx]) > 0:
+                edge_list.append((0, idx + 1))
+                edge_list.append((idx + 1, 0))
+        for idx1 in range(len(solution['sat_to_cus'])):
+            for vehicle in solution['sat_to_cus'][idx1]:
+                if len(vehicle) >= 1:
+                    edge_list.append((idx1+1, vehicle[0]+1+self.n_satellite))
+                    edge_list.append((vehicle[-1]+1+self.n_satellite, idx1+1))
+                    if len(vehicle) > 1:
+                        for i in range(len(vehicle)-1):
+                            edge_list.append((vehicle[i]+1+self.n_satellite, vehicle[i+1]+1+self.n_satellite))
+                    
+        return edge_list
     
+    def plot_graph(self, solution):
+        G = nx.DiGraph()
+        G.add_nodes_from(np.arange(0, len(self.points)).tolist())
+        edges = self.get_edge(solution)
+        G.add_edges_from(edges)
+        #pos = {point: point for point in self.points}
+        pos = {}
+        for i in range(len(self.points)):
+            pos[i] = self.points[i]
+        labels = self.labels
+        print(list(G))
+        fig, ax = plt.subplots()
+        #nx.draw(G, node_color = 'r', ax = ax)
+        nx.draw_networkx(G, pos = pos, node_size = 500, node_color='r', labels=labels, ax=ax)
+        #nx.draw_networkx_labels(G, labels=labels)
+        
+        plt.axis('on')
+        ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+        
+        plt_folder = 'Visualization&Steps'
+        title = str(1) + '.png'
+        plt.savefig(os.path.join(plt_folder, title))
+        #plt.show()
+        
 def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size=2):
     # Generate a diverse set of initial solutions using scatter search
     initial_s = twoevrp.generate_init_sat_solutions()[0]
@@ -523,12 +574,24 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     path = os.path.join('excel_params', dat_file)
     twoecvrp = TwoECVrp(path)
     num_solutions = twoecvrp.n_satellite + 1
-    best_sol = scatter_search_vns(twoecvrp, max_iterations, num_solutions, neighborhood_size)
-    best_cost = twoecvrp.calculate_cost(best_sol)
+    best_sols = [scatter_search_vns(twoecvrp, i + 1, num_solutions, neighborhood_size) for i in range(max_iterations)]
+    best_cost = np.array([twoecvrp.calculate_cost(best_sol) for best_sol in best_sols])
+   
+    # Plotting------
+    steps = np.arange(1, max_iterations + 1)
+    plt.plot(steps, best_cost)
+    plt.xlabel('iterations')
+    plt.ylabel('Fitness')
+    plt.title('Optimization Process')
+    folder = 'Visualization&Steps'
+    title = str(1) + 'opt' + '.png'
+    plt.savefig(os.path.join(folder, title))
+    #plt.show()
+    #---------------
     
     data = {'Total_Cost': [best_cost], 
-            'First_Route': [best_sol['depot_to_sat']], 
-            'Second_Route':[best_sol['sat_to_cus']],
+            'First_Route': [best_sols[-1]['depot_to_sat']], 
+            'Second_Route':[best_sols[-1]['sat_to_cus']],
             'Expected_demand': [twoecvrp.expected_demand],
             'Real_demand': [twoecvrp.real_demand]}
                 
@@ -536,7 +599,9 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     print('-1 is the depot, other indice are satellite')
     title_ = str(dat_file) + str('_') + str(max_iterations) + str('_') + str(num_solutions) + str('_') + 'tabu' + '.csv'
     final_path = os.path.join('CSV', title_)
-    df.to_csv(final_path, index = False)       
+    twoecvrp.plot_graph(best_sols[-1])
+    #df.to_csv(final_path, index = False)       
      
 e = TwoECVrp(path)                
+
 
