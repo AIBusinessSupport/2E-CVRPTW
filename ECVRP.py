@@ -9,6 +9,7 @@ import networkx as nx
 import os
 import matplotlib.pyplot as plt
 from demand.knn import KNN
+import csv
 
 ## Define Path for Code Testing
 path = 'excel_params/Ca1_2_3_15.csv'   
@@ -152,13 +153,13 @@ class TwoECVrp:
         coor_sat = satellite[col_list[1:3]].values
         st_sat = satellite[col_list[-2]].values
         params_dict['coor_satellite'] = coor_sat.tolist()
-        params_dict['st_satellite'] = st_sat.tolist()
+        params_dict['st_satellite'] = st_sat
             
         ## Coordinate of Customers
         st_cus = customer[col_list[-2]].values
         coor_cus = customer[col_list[1:3]].values
         params_dict['coor_custo'] = coor_cus.tolist()
-        params_dict['st_customer'] = st_cus.tolist()
+        params_dict['st_customer'] = st_cus
         
         ## Fuzzy Demand of Customers
         params_dict['fuzzy_demand'] = customer[col_list[-5: -2]].values
@@ -392,8 +393,8 @@ class TwoECVrp:
         for j in range(self.n_satellite):
             solutions.append([])
         for i in range(self.n_customers): 
-            depot_to_cus = self.sat_to_cus_distances[:, i] + self.depot_to_sat_distances
-            t = np.array([time_penalty(self.start_time[j] + depot_to_cus[j], self.time_window[j]) for j in range(self.n_satellite)])
+            depot_to_cus = self.sat_to_cus_distances[:, i] + self.depot_to_sat_distances + self.st_satellite
+            t = np.array([time_penalty(self.start_time[j] + depot_to_cus[j], self.time_window[i]) for j in range(self.n_satellite)])
             idx = np.argmax(t)
             solutions[idx].append([i])
             sat_cap1[idx] += self.expected_demand[i]
@@ -430,7 +431,7 @@ class TwoECVrp:
         if len(sub_sub_solution) > 1:
             for iter in range(max_iteration):
                 idx1, idx2 = np.random.randint(0, len(sub_sub_solution), 2)
-                neighbor_solution = best_solution.copy()
+                neighbor_solution = copy.deepcopy(best_solution)
                 #Swap
                 neighbor_solution[idx1], neighbor_solution[idx2] = neighbor_solution[idx2], neighbor_solution[idx1]
                 if sub_cost(timestart, neighbor_solution) < best_cost:
@@ -452,7 +453,7 @@ class TwoECVrp:
         while len(best_solution) > 1 and step < max_iteration:
             idx1, idx2 = np.random.randint(0, len(best_solution), 2)
             permutation_prob = random.random()
-            current_solution = best_solution.copy()
+            current_solution = copy.deepcopy(best_solution)
             if permutation_prob >= 0.4 and len(current_solution[idx2]) > 0:
                 transfer_idx = np.random.randint(0, len(current_solution[idx2]))
                 if sum([self.expected_demand[i] for i in current_solution[idx1]]) + self.expected_demand[current_solution[idx2][transfer_idx]] <= self.vehicle2_cap:
@@ -503,6 +504,29 @@ class TwoECVrp:
                      
         return solution
     
+    # Add labels to the Solution
+    def add_labels(self, solution):
+        labels = list(self.labels.values())
+        print(labels)
+        sat_labels = labels[1: self.n_satellite + 1]
+        cus_labels = labels[self.n_satellite + 1:]
+        label_solution = copy.deepcopy(solution)
+        for idx in range(self.n_satellite):
+            depot_path = labels[0] + '->' + sat_labels[idx] + '->' + labels[0]
+            label_solution['depot_to_sat'][idx] = [depot_path] * len(solution['depot_to_sat'][idx])
+            label_solution['sat_to_cus'][idx] = []
+            if len(solution['depot_to_sat'][idx]) > 0:
+                for vehiclepath in solution['sat_to_cus'][idx]:
+                    temp = sat_labels[idx] + '->'
+                    for cus in vehiclepath:
+                        temp += cus_labels[cus] + '->'
+                    temp += sat_labels[idx]
+                    label_solution['sat_to_cus'][idx].append(temp)
+    #    print(label_solution)
+        return label_solution
+    
+    #---------------------------
+    
     ## Catch the arrived time of customers
     def arrive_time(self, solution):
         T = np.zeros(self.n_customers)
@@ -516,12 +540,38 @@ class TwoECVrp:
                             T[vehicle[j]] = T[vehicle[j-1]] + self.cus_to_cus_distances[vehicle[j-1], vehicle[j]] + self.st_customer[vehicle[j-1]]
         return T
     
+    def sum_penalty(self, solution):
+        T = self.arrive_time(solution)
+        penal = 0
+        for i in range(self.n_customers):
+            penal += time_penalty(T[i], self.time_window[i])
+        return penal
+    
+    def get_urban_info(self, solution):
+        capacity = -self.init_sat_amount
+        for i in range(self.n_satellite):
+            route = solution['sat_to_cus'][i]
+            if len(route) > 0:
+                capacity[i] = sum([self.expected_demand[item] for L in route for item in L])
+        return capacity
+    
+    def get_vehicle_dis(self, sat_idx, route):
+        if len(route) == 0:
+            return 0, 0
+        goods = self.expected_demand[route[-1]]
+        dis = self.sat_to_cus_distances[sat_idx, route[0]] + self.sat_to_cus_distances[sat_idx, route[-1]]
+        if len(route) > 1:
+            for i in range(len(route) - 1):
+                dis += self.sat_to_sat_distances[route[i], route[i+1]]
+                goods += self.expected_demand[route[i]]
+        return dis, goods
+    
     def catch_failed_statement(self, solution, real_demand):
         '''
         return failed_time, failed_solution and falied customer list, rest_of_goods, restart_time
         '''
         failed_cus_list = []
-        solution_copy = solution.copy()
+        solution_copy = copy.deepcopy(solution)
         T = self.arrive_time(solution)
         # Catch Failed Time
         T0 = max(T)
@@ -536,17 +586,23 @@ class TwoECVrp:
             returned_time = 0
             if len(solution['sat_to_cus'][idx]) > 0:
                 for vidx in range(len(solution['sat_to_cus'][idx])):
-                    if T(solution['sat_to_cus'][idx][vidx][0]) >= T0:
-                        solution_copy['sat_to_cus'][idx].remove(solution_copy['sat_to_cus'][idx][vidx])
+                    if T[solution['sat_to_cus'][idx][vidx][0]] >= T0:
+                        solution_copy['sat_to_cus'][idx][vidx] = []
                         returned_time = max(returned_time, self.sat_to_cus_distances[idx, solution['sat_to_cus'][idx][vidx][0]])
+                        failed_idx_list += solution['sat_to_cus'][idx][vidx]
                     else:
                         cus_idx = 0
                         while T[solution['sat_to_cus'][idx][vidx][cus_idx]] < T0 and cus_idx < len(solution['sat_to_cus'][idx][vidx]):
                             cus_idx += 1
+                            if cus_idx == len(solution['sat_to_cus'][idx][vidx]):
+                                break
                         if cus_idx < len(solution['sat_to_cus'][idx][vidx]):
                             solution_copy['sat_to_cus'][idx][vidx] = solution['sat_to_cus'][idx][vidx][:cus_idx]
                             failed_idx_list += solution['sat_to_cus'][idx][vidx][cus_idx:]
                             returned_time = max(returned_time, self.sat_to_cus_distances[idx, solution['sat_to_cus'][idx][vidx][cus_idx]])
+            ## Remove empty
+            solution_copy['sat_to_cus'][idx] = [vehicle for vehicle in solution_copy['sat_to_cus'][idx] if len(vehicle) > 0]
+            
             rest_of_goods[idx] = sum([self.expected_demand[cus] for cus in failed_idx_list])
             if returned_time > self.depot_to_sat_distances[idx] + self.st_satellite[idx]:
                 restart_time[idx] += returned_time - self.depot_to_sat_distances[idx]           
@@ -576,24 +632,22 @@ class TwoECVrp:
         G.add_nodes_from(np.arange(0, len(self.points)).tolist())
         edges = self.get_edge(solution)
         G.add_edges_from(edges)
-        #pos = {point: point for point in self.points}
+        
         pos = {}
         for i in range(len(self.points)):
             pos[i] = self.points[i]
+            
         labels = self.labels
-        print(list(G))
+        
         fig, ax = plt.subplots()
-        #nx.draw(G, node_color = 'r', ax = ax)
-        nx.draw_networkx(G, pos = pos, node_size = 500, node_color='r', labels=labels, ax=ax)
-        #nx.draw_networkx_labels(G, labels=labels)
+        nx.draw_networkx(G, pos = pos, node_size = 200, style='--', node_color='r', labels=labels, ax=ax)
         
         plt.axis('on')
         ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
         
         plt_folder = 'Visualization&Steps'
-        title = str(1) + '.png'
+        title = 'expected_route' + '.png'
         plt.savefig(os.path.join(plt_folder, title))
-        #plt.show()
         
 def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size=2):
     # Generate a diverse set of initial solutions using scatter search
@@ -615,7 +669,8 @@ def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size
 class ReOptimization(TwoECVrp):
     def __init__(self, path, start_time, failed_cus_idx: list, current_sat_amount):
         super().__init__(path)
-        self.n_customers = len(failed_cus_idx)
+        self.failed_cus_idx = failed_cus_idx
+        self.n_customers = len(self.failed_cus_idx)
         self.init_sat_amount = current_sat_amount
         self.expected_demand = self.demand[:, -1]
         self.start_time = start_time
@@ -624,60 +679,70 @@ class ReOptimization(TwoECVrp):
         self.sat_to_cus_distances = self.sat_to_cus_distances[:, failed_cus_idx]
         self.cus_to_cus_distances = self.cus_to_cus_distances[:, failed_cus_idx][failed_cus_idx, :]
         
+    def add_labels(self, solution):
+        labels = list(self.labels.values())
+        sat_labels = labels[1: self.n_satellite + 1]
+        cus_labels = labels[self.n_satellite + 1:]
+        label_solution = copy.deepcopy(solution)
+        for idx in range(self.n_satellite):
+            depot_path = labels[0] + '->' + sat_labels[idx] + '->' + labels[0]
+            label_solution['depot_to_sat'][idx] = [depot_path] * len(solution['depot_to_sat'][idx])
+            label_solution['sat_to_cus'][idx] = []
+            if len(solution['depot_to_sat'][idx]) > 0:
+                for vehiclepath in solution['sat_to_cus'][idx]:
+                    temp = sat_labels[idx] + '->'
+                    for cus in vehiclepath:
+                        temp += cus_labels[self.failed_cus_idx[cus]] + '->'
+                    temp += sat_labels[idx]
+                    label_solution['sat_to_cus'][idx].append(temp)
+    #    print(label_solution)
+        return label_solution
+        
+    def get_edge(self, solution):
+        edge_list = []
+        for idx in range(len(solution['depot_to_sat'])):
+            if len(solution['depot_to_sat'][idx]) > 0:
+                edge_list.append((0, idx + 1))
+                edge_list.append((idx + 1, 0))
+        for idx1 in range(len(solution['sat_to_cus'])):
+            if len(solution['sat_to_cus'][idx1]) > 0:
+                for vehicle in solution['sat_to_cus'][idx1]:
+                    if len(vehicle) >= 1:
+                        edge_list.append((idx1+1, self.failed_cus_idx[vehicle[0]]+1+self.n_satellite))
+                        edge_list.append((self.failed_cus_idx[vehicle[-1]]+1+self.n_satellite, idx1+1))
+                        if len(vehicle) > 1:
+                            for i in range(len(vehicle)-1):
+                                edge_list.append((self.failed_cus_idx[vehicle[i]]+1+self.n_satellite, self.failed_cus_idx[vehicle[i+1]]+1+self.n_satellite))
+                        
+        return edge_list
+    
+    def plot_graph(self, solution):
+        G = nx.DiGraph()
+        G.add_nodes_from(np.arange(0, len(self.points)).tolist())
+        edges = self.get_edge(solution)
+        G.add_edges_from(edges)
+        
+        pos = {}
+        for i in range(len(self.points)):
+            pos[i] = self.points[i]
+            
+        labels = self.labels
+        
+        fig, ax = plt.subplots()
+        nx.draw_networkx(G, pos = pos, arrows=True, node_size = 200, node_color='r', edge_color='y', labels=labels, ax=ax)
+        
+        plt.axis('on')
+        ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+        
+        plt_folder = 'Visualization&Steps'
+        title = 'reoptimization_route' + '.png'
+        plt.savefig(os.path.join(plt_folder, title))
+        
         
 
-def output_csv_plot(dat_file,max_iterations, neighborhood_size):
-    #Delete All old file from CSV Folder
-    for file in os.listdir('CSV'):
-        os.remove(os.path.join('CSV', file))
-    path = os.path.join('excel_params', dat_file)
-    twoecvrp = TwoECVrp(path)
-    num_solutions = twoecvrp.n_satellite + 1
-    best_sols = [scatter_search_vns(twoecvrp, i + 1, num_solutions, neighborhood_size) for i in range(max_iterations)]
-    best_cost = np.array([twoecvrp.calculate_cost(best_sol) for best_sol in best_sols])
-    
-    # Plotting------
-    steps = np.arange(1, max_iterations + 1)
-    plt.plot(steps, best_cost)
-    plt.xlabel('iterations')
-    plt.ylabel('Fitness')
-    plt.title('Optimization Process')
-    folder = 'Visualization&Steps'
-    title = str(1) + 'opt' + '.png'
-    plt.savefig(os.path.join(folder, title))
-    #plt.show()
-    #---------------
-    
-    data = {'Total_Cost': [best_cost], 
-            'First_Route': [best_sols[-1]['depot_to_sat']], 
-            'Second_Route':[best_sols[-1]['sat_to_cus']],
-            'Expected_demand': [twoecvrp.expected_demand],
-            'Real_demand': [twoecvrp.real_demand]}
-    
-    # Save the real demand------
-    real_demand = np.zeros(twoecvrp.n_customers)
-    for i in range(twoecvrp.n_customers):
-        rand_demand = np.random.normal(twoecvrp.demand[i, 1], (twoecvrp.demand[i, 2] - twoecvrp.demand[i, 0])/6)
-        real_demand[i] = min(twoecvrp.demand[i, 2], max(twoecvrp.demand[i, 0], rand_demand))
-    
-    with open('demand/demand_history.txt', 'a') as f:
-            f.write(str(real_demand))
-            f.write('\n')
-            f.close()
-    #---------------------------
-    df = pd.DataFrame(data)
-    print('-1 is the depot, other indice are satellite')
-    title_ = str(dat_file) + str('_') + str(max_iterations) + str('_') + str(num_solutions) + str('_') + 'tabu' + '.csv'
-    final_path = os.path.join('CSV', title_)
-    #df.to_csv(final_path, index = False) 
-    
-    # Visualize the Route
-    twoecvrp.plot_graph(best_sols[-1])
-    
-    #--- Re-Optimization--------
-    
+
           
      
-e = TwoECVrp(path)                
+#e = TwoECVrp(path)                
 
 
