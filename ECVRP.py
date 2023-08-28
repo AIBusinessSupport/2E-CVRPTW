@@ -562,7 +562,7 @@ class TwoECVrp:
         dis = self.sat_to_cus_distances[sat_idx, route[0]] + self.sat_to_cus_distances[sat_idx, route[-1]]
         if len(route) > 1:
             for i in range(len(route) - 1):
-                dis += self.sat_to_sat_distances[route[i], route[i+1]]
+                dis += self.cus_to_cus_distances[route[i], route[i+1]]
                 goods += self.expected_demand[route[i]]
         return dis, goods
     

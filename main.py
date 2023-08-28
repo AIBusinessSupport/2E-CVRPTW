@@ -36,9 +36,12 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     plt.savefig(os.path.join(folder, title))
     #plt.show()
     #---------------
- 
+    cus_index_list = list(np.arange(twoecvrp.n_customers))
     # Save the Expected Demand --------------
-    with open('demand/expected_demand_history.csv') as file:
+    with open('demand/expected_demand_history.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['D'+str(i) for i in cus_index_list])
+    with open('demand/expected_demand_history.csv', 'a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(list(twoecvrp.expected_demand))
         
@@ -127,7 +130,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
                 worksheet.write(row, 1, route1_label['depot_to_sat'][i][j])
                 worksheet.write(row, 3, capacity[i] / len(route1_label['depot_to_sat'][i]))
                 worksheet.write(row, 2, twoecvrp.depot_to_sat_distances[i])
-                worksheet.write(row, 4, (twoecvrp.depot_to_sat_distances[i], twoecvrp.depot_to_sat_distances[i] + twoecvrp.st_satellite[i]))
+                worksheet.write(row, 4, str((twoecvrp.depot_to_sat_distances[i], twoecvrp.depot_to_sat_distances[i] + twoecvrp.st_satellite[i])))
                 row += 1
                 
     worksheet.write(row, 0, 'Satellite to Customer Route')
@@ -149,7 +152,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
                 worksheet.write(row, 1, route2_label[i][j])
                 worksheet.write(row, 2, twoecvrp.get_vehicle_dis(i, route2[i][j])[0])
                 worksheet.write(row, 3, twoecvrp.get_vehicle_dis(i, route2[i][j])[1])
-                worksheet.write(row, 4, [(arrive_time[cus], arrive_time[cus] + twoecvrp.st_customer[cus]) for cus in route2[i][j]])
+                worksheet.write(row, 4, str([(arrive_time[cus], arrive_time[cus] + twoecvrp.st_customer[cus]) for cus in route2[i][j]]))
                 row += 1
                 idx += 1
                 
@@ -160,10 +163,10 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     worksheet.write(row, 1, failed_time)
     row += 1
     worksheet.write(row, 0, 'failed customer Index')
-    worksheet.write(row, 1, failed_cus_list)
+    worksheet.write(row, 1, str(failed_cus_list))
     row += 1
     worksheet.write(row, 0, 'Remained Amount of Satellite')
-    worksheet.write(row, 1, rest_of_goods)
+    worksheet.write(row, 1, str(rest_of_goods))
     row += 1
     worksheet.write(row, 0, 'Total Time')
     worksheet.write(row, 1, np.max(re_twoecvrptw.arrive_time(re_best_sols[-1])))
@@ -194,7 +197,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
                 worksheet.write(row, 1, re_route1_label['depot_to_sat'][i][j])
                 worksheet.write(row, 3, re_capacity[i] / len(re_route1_label['depot_to_sat'][i]))
                 worksheet.write(row, 2, re_twoecvrptw.depot_to_sat_distances[i])
-                worksheet.write(row, 4, (re_twoecvrptw.depot_to_sat_distances[i] + restart_time[i] + failed_time, re_twoecvrptw.depot_to_sat_distances[i] + restart_time[i] + failed_time + re_twoecvrptw.st_satellite[i]))
+                worksheet.write(row, 4, str((re_twoecvrptw.depot_to_sat_distances[i] + restart_time[i] + failed_time, re_twoecvrptw.depot_to_sat_distances[i] + restart_time[i] + failed_time + re_twoecvrptw.st_satellite[i])))
                 row += 1
                 re_idx1 += 1
     
@@ -217,7 +220,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
                 worksheet.write(row, 1, re_route2_label[i][j])
                 worksheet.write(row, 2, re_twoecvrptw.get_vehicle_dis(i, re_route2[i][j])[0])
                 worksheet.write(row, 3, re_twoecvrptw.get_vehicle_dis(i, re_route2[i][j])[1])
-                worksheet.write(row, 4, [(re_arrive_time[cus], re_arrive_time[cus] + re_twoecvrptw.st_customer[cus]) for cus in re_route2[i][j]])
+                worksheet.write(row, 4, str([(re_arrive_time[cus], re_arrive_time[cus] + re_twoecvrptw.st_customer[cus]) for cus in re_route2[i][j]]))
                 row += 1
                 re_idx2 += 1
     
