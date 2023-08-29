@@ -49,7 +49,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     real_demand = np.zeros(twoecvrp.n_customers)
     for i in range(twoecvrp.n_customers):
         rand_demand = np.random.normal(twoecvrp.demand[i, 1], (twoecvrp.demand[i, 2] - twoecvrp.demand[i, 0])/6)
-        real_demand[i] = min(twoecvrp.demand[i, 2], max(twoecvrp.demand[i, 0], rand_demand))
+        real_demand[i] = np.int64(min(twoecvrp.demand[i, 2], max(twoecvrp.demand[i, 0], rand_demand)))
     
     with open('demand/demand_history.csv', 'a', newline='') as f:
             writer = csv.writer(f)

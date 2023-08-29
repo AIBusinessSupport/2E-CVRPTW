@@ -44,7 +44,7 @@ def KNN(bound_demand, coord_cus):
         # Get the real demand:
         predict_demand[i] = min(bound_demand[i, 2], max(bound_demand[i, 0], y_pred))
         
-    return predict_demand     
+    return np.int64(predict_demand)     
         
     
     
