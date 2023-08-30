@@ -406,9 +406,10 @@ class TwoECVrp:
             return sub_sub_solution, 0
         
         ## Define the cost function of sub_sub_solution
-        def sub_cost(current_time, sub_path):
+        def sub_cost(current_time, sub_path1):
             cost = 0
             current_time1 = current_time
+            sub_path = [min(cust, self.n_customers-1) for cust in sub_path1]
             if len(sub_path) == 0:
                 return 0
             for j in range(len(sub_path)):

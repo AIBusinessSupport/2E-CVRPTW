@@ -17,6 +17,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     for file in os.listdir('CSV'):
         os.remove(os.path.join('CSV', file))
     path = os.path.join('excel_params', dat_file)
+    dat_file1 = dat_file[0:-4]
     twoecvrp = TwoECVrp(path)
     num_solutions = twoecvrp.n_satellite + 1
     best_sols = [scatter_search_vns(twoecvrp, i + 1, num_solutions, neighborhood_size) for i in range(max_iterations)]
@@ -38,9 +39,10 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     #---------------
     cus_index_list = list(np.arange(twoecvrp.n_customers))
     # Save the Expected Demand --------------
-    with open('demand/expected_demand_history.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['D'+str(i) for i in cus_index_list])
+    if os.path.isfile('demand/expected_demand_history.csv') == False:
+        with open('demand/expected_demand_history.csv', 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['D'+str(i) for i in cus_index_list])
     with open('demand/expected_demand_history.csv', 'a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(list(twoecvrp.expected_demand))
@@ -51,6 +53,9 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
         rand_demand = np.random.normal(twoecvrp.demand[i, 1], (twoecvrp.demand[i, 2] - twoecvrp.demand[i, 0])/6)
         real_demand[i] = np.int64(min(twoecvrp.demand[i, 2], max(twoecvrp.demand[i, 0], rand_demand)))
     
+    if os.path.isfile('demand/demand_history.csv') == False:
+        with open('demand/demand_history.csv', 'w', newline='') as file:
+            writer = csv.writer(file)
     with open('demand/demand_history.csv', 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(list(real_demand))
