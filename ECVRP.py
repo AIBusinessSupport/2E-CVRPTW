@@ -260,6 +260,7 @@ class TwoECVrp:
             # Cost for satellites to customers
             if len(route2[i]) > 0:
                 for sub_path in route2[i]:
+                    sub_path = [min(sat, self.n_customers-1) for sat in sub_path]
             #cost += self.optimize_sub_sat_solution(i, route2[i])[1]
                     if len(sub_path) > 0:
                         for j in range(len(sub_path)):

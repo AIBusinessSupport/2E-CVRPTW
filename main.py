@@ -240,7 +240,7 @@ Data_Folder = 'excel_params'
 Plot_Folder = 'Visualization'
 for file in os.listdir(Data_Folder):
     #path = os.path.join(Data_Folder, file) 
-    max_iteration = 50
+    max_iteration = 3
     neighborhood_size = 2
     output_csv_plot(file, max_iteration, neighborhood_size)
     
