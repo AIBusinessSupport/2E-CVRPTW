@@ -12,12 +12,12 @@ from demand.knn import KNN
 import csv
 
 
-def output_csv_plot(dat_file,max_iterations, neighborhood_size):
+def output_csv_plot(dat_file, max_iterations, neighborhood_size):
     #Delete All old file from CSV Folder
-    for file in os.listdir('CSV'):
-        os.remove(os.path.join('CSV', file))
-    path = os.path.join('excel_params', dat_file)
-    dat_file1 = dat_file[0:-4]
+    dat_file1 = dat_file[:-4]
+    for file in os.listdir(os.path.join('CSV', dat_file1)):
+        os.remove(os.path.join('CSV', dat_file1, file))
+    path = dat_file
     twoecvrp = TwoECVrp(path)
     num_solutions = twoecvrp.n_satellite + 1
     best_sols = [scatter_search_vns(twoecvrp, i + 1, num_solutions, neighborhood_size) for i in range(max_iterations)]
@@ -34,16 +34,16 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     plt.title('Optimization Process')
     folder = 'Visualization&Steps'
     title = 'failed_fitness_iteration' + '.png'
-    plt.savefig(os.path.join(folder, title))
+    plt.savefig(os.path.join(folder, dat_file1, title))
     #plt.show()
     #---------------
     cus_index_list = list(np.arange(twoecvrp.n_customers))
     # Save the Expected Demand --------------
-    if os.path.isfile('demand/expected_demand_history.csv') == False:
-        with open('demand/expected_demand_history.csv', 'w', newline='') as file:
+    if os.path.isfile(os.path.join('demand', dat_file1, 'expected_demand_history.csv')) == False:
+        with open(os.path.join('demand', dat_file1, 'expected_demand_history.csv'), 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['D'+str(i) for i in cus_index_list])
-    with open('demand/expected_demand_history.csv', 'a', newline='') as file:
+    with open(os.path.join('demand', dat_file1, 'expected_demand_history.csv'), 'a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(list(twoecvrp.expected_demand))
         
@@ -53,10 +53,10 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
         rand_demand = np.random.normal(twoecvrp.demand[i, 1], (twoecvrp.demand[i, 2] - twoecvrp.demand[i, 0])/6)
         real_demand[i] = np.int64(min(twoecvrp.demand[i, 2], max(twoecvrp.demand[i, 0], rand_demand)))
     
-    if os.path.isfile('demand/demand_history.csv') == False:
-        with open('demand/demand_history.csv', 'w', newline='') as file:
+    if os.path.isfile(os.path.join('demand', dat_file1, 'demand_history.csv')) == False:
+        with open(os.path.join('demand', dat_file1, 'demand_history.csv'), 'w', newline='') as file:
             writer = csv.writer(file)
-    with open('demand/demand_history.csv', 'a', newline='') as f:
+    with open(os.path.join('demand', dat_file1, 'demand_history.csv'), 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(list(real_demand))
     #------------------------------------------
@@ -87,7 +87,7 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
         plt.title('Re-Optimization Process')
         folder = 'Visualization&Steps'
         title = 'reoptimized_fitness_iteration' + '.png'
-        plt.savefig(os.path.join(folder, title))
+        plt.savefig(os.path.join(folder, dat_file1, title))
     
     #---------------------------
         print('Note: -1 is the depot, other indice are satellite')
@@ -97,9 +97,9 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
         re_twoecvrptw.plot_graph(re_best_sols[-1])
 
     # Summarization ------------
-    if os.path.isfile('CSV/summarization.xlsx'):
-        os.remove('CSV/summarization.xlsx')
-    workbook = xlsxwriter.Workbook('CSV/summarization.xlsx')
+    if os.path.isfile(os.path.join('CSV', dat_file1, 'summarization.csv')):
+        os.remove(os.path.join('CSV', dat_file1, 'summarization.csv'))
+    workbook = xlsxwriter.Workbook(os.path.join('CSV', dat_file1, 'summarization.csv'))
     worksheet = workbook.add_worksheet()
     worksheet.write(0, 0, '目标函数')
     worksheet.write(1, 0, '一级网络车辆固定成本')
@@ -134,8 +134,8 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
                 worksheet.write(row, 0, 'Urban' + str(row-10))
                 worksheet.write(row, 1, route1_label['depot_to_sat'][i][j])
                 worksheet.write(row, 3, capacity[i] / len(route1_label['depot_to_sat'][i]))
-                worksheet.write(row, 2, twoecvrp.depot_to_sat_distances[i])
-                worksheet.write(row, 4, str((twoecvrp.depot_to_sat_distances[i], twoecvrp.depot_to_sat_distances[i] + twoecvrp.st_satellite[i])))
+                worksheet.write(row, 2, 2 * twoecvrp.depot_to_sat_distances[twoecvrp.near_depot[i], i])
+                worksheet.write(row, 4, str((twoecvrp.depot_to_sat_distances[twoecvrp.near_depot[i], i], twoecvrp.depot_to_sat_distances[twoecvrp.near_depot[i], i] + twoecvrp.st_satellite[i])))
                 row += 1
                 
     worksheet.write(row, 0, 'Satellite to Customer Route')
@@ -201,8 +201,8 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
                 worksheet.write(row, 0, 're-Urban' + str(re_idx1))
                 worksheet.write(row, 1, re_route1_label['depot_to_sat'][i][j])
                 worksheet.write(row, 3, re_capacity[i] / len(re_route1_label['depot_to_sat'][i]))
-                worksheet.write(row, 2, re_twoecvrptw.depot_to_sat_distances[i])
-                worksheet.write(row, 4, str((re_twoecvrptw.depot_to_sat_distances[i] + restart_time[i] + failed_time, re_twoecvrptw.depot_to_sat_distances[i] + restart_time[i] + failed_time + re_twoecvrptw.st_satellite[i])))
+                worksheet.write(row, 2, 2 * re_twoecvrptw.depot_to_sat_distances[re_twoecvrptw.near_depot[i], i])
+                worksheet.write(row, 4, str((re_twoecvrptw.depot_to_sat_distances[re_twoecvrptw.near_depot[i], i] + restart_time[i] + failed_time, re_twoecvrptw.depot_to_sat_distances[re_twoecvrptw.near_depot[i], i] + restart_time[i] + failed_time + re_twoecvrptw.st_satellite[i])))
                 row += 1
                 re_idx1 += 1
     
@@ -237,10 +237,18 @@ def output_csv_plot(dat_file,max_iterations, neighborhood_size):
     workbook.close()
     
 Data_Folder = 'excel_params'
-Plot_Folder = 'Visualization'
+Plot_Folder = 'Visualization&Steps'
+Summarization_Folder = 'CSV'
+Demand_Folder = 'demand'
+folder_list = [Plot_Folder, Summarization_Folder, Demand_Folder]
 for file in os.listdir(Data_Folder):
     #path = os.path.join(Data_Folder, file) 
     max_iteration = 3
     neighborhood_size = 2
+    sub_folder = file[:-4]
+    ## Create Folders
+    for folder_name in folder_list:
+        if os.path.exists(os.path.join(folder_name, sub_folder)) == False:
+            os.mkdir(os.path.join(folder_name, sub_folder))
     output_csv_plot(file, max_iteration, neighborhood_size)
     

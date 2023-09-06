@@ -11,11 +11,10 @@ import matplotlib.pyplot as plt
 from demand.knn import KNN
 import csv
 
-## Define Path for Code Testing
-path = 'excel_params/Ca1_2_3_15.csv'   
 # Define the 2E-VRP class
 
 def time_penalty(t, time_window):
+    
     if t < time_window[0] or t > time_window[3]:
         return 0
     if t >= time_window[0] and t < time_window[1]:
@@ -29,8 +28,10 @@ class TwoECVrp:
     
     def __init__(self, path):
         # Set the number of customers and depots
-        self.path = path
+        self.path_name = path[:-4] 
+        self.path = os.path.join('excel_params', path)
         params_dict = self.upload_params_from_excel()
+        self.n_depot = len(params_dict['coor_depot'])
         self.n_customers = len(params_dict['coor_custo'])
         self.n_satellite = len(params_dict['coor_satellite'])
         self.init_sat_amount = np.zeros(self.n_satellite)
@@ -40,18 +41,19 @@ class TwoECVrp:
         # Define the start time - waiting time of satellite
         self.start_time = np.zeros(self.n_satellite)
         #self.expected_demand = self.demand[:,1]
-        self.points = [tuple(params_dict['coor_depot'][0])]
+        self.points = []
         self.labels = {}
-        self.labels[0] = 'D'
+        for d in range(self.n_depot):
+            self.points.append(tuple(params_dict['coor_depot'][d]))
+            self.labels[d] = 'D' + str(d)
         # Set the time windows of each customer
         self.time_window = params_dict['time_window']
-        
         # Set the Service Time of Satellite and Customers
         self.st_satellite = params_dict['st_satellite']
         self.st_customer = params_dict['st_customer']
         
         # Generate random distances between all nodes
-        self.depot_to_sat_distances = np.zeros(self.n_satellite) # Distance between depot and satellite
+        self.depot_to_sat_distances = np.zeros((self.n_depot, self.n_satellite)) # Distance between depot and satellite
         self.sat_to_cus_distances = np.zeros((self.n_satellite, self.n_customers)) # Distance between satellite and customers
         self.sat_to_sat_distances = np.zeros((self.n_satellite, self.n_satellite))
         
@@ -60,11 +62,12 @@ class TwoECVrp:
         for i in range(self.n_satellite):
             #self.sat_cap[i] = params_dict['coor_cap_cost_satellite'][i][3]
             #self.hs[i] = params_dict['coor_cap_cost_satellite'][i][4]
-            self.labels[i+1] = 'S' + str(i)
+            self.labels[i + self.n_depot] = 'S' + str(i)
             self.points.append(tuple(params_dict['coor_satellite'][i]))
             coor_sati = np.array(params_dict['coor_satellite'][i])
-            coor_depot = np.array(params_dict['coor_depot'][0])
-            self.depot_to_sat_distances[i] = np.sqrt(sum((coor_sati - coor_depot) ** 2))
+            for d in range(self.n_depot):
+                coor_depot = np.array(params_dict['coor_depot'][d])
+                self.depot_to_sat_distances[d, i] = np.sqrt(sum((coor_sati - coor_depot) ** 2))
             
             for j in range(self.n_customers):
                 coor_cus = np.array(params_dict['coor_custo'][j])
@@ -77,13 +80,17 @@ class TwoECVrp:
         ## Define the distance between cus to cus
         self.cus_to_cus_distances = np.zeros((self.n_customers, self.n_customers))
         for i in range(self.n_customers):
-            self.labels[i + 1 + self.n_satellite] = 'C' + str(i)
+            self.labels[i + self.n_depot + self.n_satellite] = 'C' + str(i)
             self.points.append(tuple(params_dict['coor_custo'][i]))
             for j in range(self.n_customers):
                 coori = np.array(params_dict['coor_custo'][i])
                 coorj = np.array(params_dict['coor_custo'][j])
                 self.cus_to_cus_distances[i, j] = np.sqrt(sum((coori - coorj)**2))
 
+        self.near_depot = np.zeros(self.n_satellite, dtype=int)
+        for sat in range(self.n_satellite):
+            self.near_depot[sat] = np.argmin(self.depot_to_sat_distances[:, sat])
+        
         # Set the capacity of satellite (But Optional)
         self.sat_cap = params_dict['max_cap_satellite']
         
@@ -255,8 +262,8 @@ class TwoECVrp:
             current_time = self.start_time[i]
             print(path)
             if len(path) > 0:
-                cost += len(path) * (2 * self.depot_to_sat_distances[i] * self.unit_cost_1 + self.fixed_cost_1)
-                current_time += self.depot_to_sat_distances[i] + self.st_satellite[i]
+                cost += len(path) * (2 * self.depot_to_sat_distances[self.near_depot[i], i] * self.unit_cost_1 + self.fixed_cost_1)
+                current_time += self.depot_to_sat_distances[self.near_depot[i], i] + self.st_satellite[i]
             # Cost for satellites to customers
             if len(route2[i]) > 0:
                 for sub_path in route2[i]:
@@ -394,7 +401,7 @@ class TwoECVrp:
         for j in range(self.n_satellite):
             solutions.append([])
         for i in range(self.n_customers): 
-            depot_to_cus = self.sat_to_cus_distances[:, i] + self.depot_to_sat_distances + self.st_satellite
+            depot_to_cus = self.sat_to_cus_distances[:, i] + self.depot_to_sat_distances[list(self.near_depot), list(np.arange(self.n_satellite))] + self.st_satellite
             t = np.array([time_penalty(self.start_time[j] + depot_to_cus[j], self.time_window[i]) for j in range(self.n_satellite)])
             idx = np.argmax(t)
             solutions[idx].append([i])
@@ -425,9 +432,9 @@ class TwoECVrp:
             cost += self.sat_to_cus_distances[sat_idx, sub_path[-1]] * self.unit_cost_2 + self.fixed_cost_2
             return cost
         
-        max_iteration = len(sub_sub_solution) ** 2
+        max_iteration = len(sub_sub_solution) + 1
         best_solution = sub_sub_solution
-        timestart = self.depot_to_sat_distances[sat_idx] + self.start_time[sat_idx]
+        timestart = self.depot_to_sat_distances[self.near_depot[sat_idx], sat_idx] + self.start_time[sat_idx]
         best_cost = sub_cost(timestart, sub_sub_solution)
         ## Implement Tabu Search
         if len(sub_sub_solution) > 1:
@@ -449,7 +456,7 @@ class TwoECVrp:
         best_solution = [sol[0] for sol in best_solution_cost]
         
         best_cost = sum([sol[1] for sol in best_solution_cost])
-        max_iteration = sum([len(sub_sub_solution) for sub_sub_solution in sub_solution]) ** 2
+        max_iteration = sum([len(sub_sub_solution) for sub_sub_solution in sub_solution]) * 2
         ## Implement Tabu Search
         step = 0
         while len(best_solution) > 1 and step < max_iteration:
@@ -510,11 +517,11 @@ class TwoECVrp:
     def add_labels(self, solution):
         labels = list(self.labels.values())
         print(labels)
-        sat_labels = labels[1: self.n_satellite + 1]
-        cus_labels = labels[self.n_satellite + 1:]
+        sat_labels = labels[self.n_depot: self.n_satellite + self.n_depot]
+        cus_labels = labels[self.n_satellite + self.n_depot:]
         label_solution = copy.deepcopy(solution)
         for idx in range(self.n_satellite):
-            depot_path = labels[0] + '->' + sat_labels[idx] + '->' + labels[0]
+            depot_path = labels[self.near_depot[idx]] + '->' + sat_labels[idx] + '->' + labels[self.near_depot[idx]]
             label_solution['depot_to_sat'][idx] = [depot_path] * len(solution['depot_to_sat'][idx])
             label_solution['sat_to_cus'][idx] = []
             if len(solution['depot_to_sat'][idx]) > 0:
@@ -534,7 +541,7 @@ class TwoECVrp:
         T = np.zeros(self.n_customers)
         for i in range(self.n_satellite):
             if len(solution['depot_to_sat']) > 0:
-                current_time = self.depot_to_sat_distances[i] + self.st_satellite[i] + self.start_time[i]
+                current_time = self.depot_to_sat_distances[self.near_depot[i], i] + self.st_satellite[i] + self.start_time[i]
                 for vehicle in solution['sat_to_cus'][i]:
                     T[vehicle[0]] += current_time + self.sat_to_cus_distances[i, vehicle[0]]
                     if len(vehicle) > 1:
@@ -606,8 +613,8 @@ class TwoECVrp:
             solution_copy['sat_to_cus'][idx] = [vehicle for vehicle in solution_copy['sat_to_cus'][idx] if len(vehicle) > 0]
             
             rest_of_goods[idx] = sum([self.expected_demand[cus] for cus in failed_idx_list])
-            if returned_time > self.depot_to_sat_distances[idx] + self.st_satellite[idx]:
-                restart_time[idx] += returned_time - self.depot_to_sat_distances[idx]           
+            if returned_time > self.depot_to_sat_distances[self.near_depot[idx], idx] + self.st_satellite[idx]:
+                restart_time[idx] += returned_time - self.depot_to_sat_distances[self.near_depot[idx], idx]           
             failed_cus_list += failed_idx_list                
         return T0, solution_copy, failed_cus_list, rest_of_goods, restart_time
                                                     
@@ -616,16 +623,16 @@ class TwoECVrp:
         edge_list = []
         for idx in range(len(solution['depot_to_sat'])):
             if len(solution['depot_to_sat'][idx]) > 0:
-                edge_list.append((0, idx + 1))
-                edge_list.append((idx + 1, 0))
+                edge_list.append((self.near_depot[idx], idx + self.n_depot))
+                edge_list.append((idx + self.n_depot, self.near_depot[idx]))
         for idx1 in range(len(solution['sat_to_cus'])):
             for vehicle in solution['sat_to_cus'][idx1]:
                 if len(vehicle) >= 1:
-                    edge_list.append((idx1+1, vehicle[0]+1+self.n_satellite))
-                    edge_list.append((vehicle[-1]+1+self.n_satellite, idx1+1))
+                    edge_list.append((idx1+self.n_depot, vehicle[0] + self.n_depot + self.n_satellite))
+                    edge_list.append((vehicle[-1] + self.n_depot + self.n_satellite, idx1 + self.n_depot))
                     if len(vehicle) > 1:
                         for i in range(len(vehicle)-1):
-                            edge_list.append((vehicle[i]+1+self.n_satellite, vehicle[i+1]+1+self.n_satellite))
+                            edge_list.append((vehicle[i] + self.n_depot + self.n_satellite, vehicle[i+1] + self.n_depot + self.n_satellite))
                     
         return edge_list
     
@@ -649,7 +656,7 @@ class TwoECVrp:
         
         plt_folder = 'Visualization&Steps'
         title = 'expected_route' + '.png'
-        plt.savefig(os.path.join(plt_folder, title))
+        plt.savefig(os.path.join(plt_folder, self.path_name, title))
         
 def scatter_search_vns(twoevrp, max_iterations, num_solutions, neighborhood_size=2):
     # Generate a diverse set of initial solutions using scatter search
@@ -683,11 +690,11 @@ class ReOptimization(TwoECVrp):
         
     def add_labels(self, solution):
         labels = list(self.labels.values())
-        sat_labels = labels[1: self.n_satellite + 1]
-        cus_labels = labels[self.n_satellite + 1:]
+        sat_labels = labels[self.n_depot: self.n_satellite + self.n_depot]
+        cus_labels = labels[self.n_satellite + self.n_depot:]
         label_solution = copy.deepcopy(solution)
         for idx in range(self.n_satellite):
-            depot_path = labels[0] + '->' + sat_labels[idx] + '->' + labels[0]
+            depot_path = labels[self.near_depot[idx]] + '->' + sat_labels[idx] + '->' + labels[self.near_depot[idx]]
             label_solution['depot_to_sat'][idx] = [depot_path] * len(solution['depot_to_sat'][idx])
             label_solution['sat_to_cus'][idx] = []
             if len(solution['depot_to_sat'][idx]) > 0:
@@ -704,17 +711,18 @@ class ReOptimization(TwoECVrp):
         edge_list = []
         for idx in range(len(solution['depot_to_sat'])):
             if len(solution['depot_to_sat'][idx]) > 0:
-                edge_list.append((0, idx + 1))
-                edge_list.append((idx + 1, 0))
+                edge_list.append((self.near_depot[idx], idx + self.n_depot))
+                edge_list.append((idx + self.n_depot, self.near_depot[idx]))
         for idx1 in range(len(solution['sat_to_cus'])):
             if len(solution['sat_to_cus'][idx1]) > 0:
                 for vehicle in solution['sat_to_cus'][idx1]:
+                    print(vehicle)
                     if len(vehicle) >= 1:
-                        edge_list.append((idx1+1, self.failed_cus_idx[vehicle[0]]+1+self.n_satellite))
-                        edge_list.append((self.failed_cus_idx[vehicle[-1]]+1+self.n_satellite, idx1+1))
+                        edge_list.append((idx1+self.n_depot, self.failed_cus_idx[vehicle[0]]+self.n_depot+self.n_satellite))
+                        edge_list.append((self.failed_cus_idx[vehicle[-1]] + self.n_depot + self.n_satellite, idx1+self.n_depot))
                         if len(vehicle) > 1:
                             for i in range(len(vehicle)-1):
-                                edge_list.append((self.failed_cus_idx[vehicle[i]]+1+self.n_satellite, self.failed_cus_idx[vehicle[i+1]]+1+self.n_satellite))
+                                edge_list.append((self.failed_cus_idx[vehicle[i]]+self.n_depot+self.n_satellite, self.failed_cus_idx[vehicle[i+1]]+self.n_depot+self.n_satellite))
                         
         return edge_list
     
@@ -738,13 +746,12 @@ class ReOptimization(TwoECVrp):
         
         plt_folder = 'Visualization&Steps'
         title = 'reoptimization_route' + '.png'
-        plt.savefig(os.path.join(plt_folder, title))
+        plt.savefig(os.path.join(plt_folder, self.path_name, title))
         
         
 
 
           
      
-#e = TwoECVrp(path)                
 
 
