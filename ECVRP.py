@@ -112,11 +112,7 @@ class TwoECVrp:
         self.fixed_cost_2 = params_dict['fix_cost_SE']
         
         # Initialize the solution with a random assignment of customers to depots
-        sat_solution = self.generate_init_sat_solutions()[0]
-        self.solution = self.generate_depot_solutions(sat_solution)
-        
-        # Calculate the cost of the initial solution
-        self.cost = self.calculate_cost(self.solution)
+ 
     
     def upload_params_from_excel(self):
         #Load the Data from CSV file. 
@@ -285,8 +281,9 @@ class TwoECVrp:
         return cost
     def tabu(self, max_iterations, neighborhood_size):
         # Initialize the best solution and its cost
-        best_solution = copy.deepcopy(self.solution)
-        best_cost = self.cost
+        S = self.generate_depot_solutions(self.generate_init_sat_solutions()[0])
+        best_solution = copy.deepcopy(S)
+        best_cost = self.calculate_cost(S)
         
         # Set the initial neighborhood structure and its size
         neighborhood_structure = 1
@@ -491,7 +488,7 @@ class TwoECVrp:
     def generate_depot_solutions(self, solutions):
         solution = {'depot_to_sat': [],
                      'sat_to_cus': []}    
-        alter_solution = solutions
+        alter_solution = copy.deepcopy(solutions)
         solution['sat_to_cus'] = [self.optimize_sub_sat_solution(i, alter_solution[i])[0] for i in range(self.n_satellite)]
         ## get the required amount of goods in each satellite
         required_amount = np.zeros(self.n_satellite) - self.init_sat_amount
@@ -693,6 +690,8 @@ class ReOptimization(TwoECVrp):
         labels = list(self.labels.values())
         sat_labels = labels[self.n_depot: self.n_satellite + self.n_depot]
         cus_labels = labels[self.n_satellite + self.n_depot:]
+        print(self.failed_cus_idx)
+        print(cus_labels)
         label_solution = copy.deepcopy(solution)
         for idx in range(self.n_satellite):
             depot_path = labels[self.near_depot[idx]] + '->' + sat_labels[idx] + '->' + labels[self.near_depot[idx]]
@@ -700,8 +699,11 @@ class ReOptimization(TwoECVrp):
             label_solution['sat_to_cus'][idx] = []
             if len(solution['depot_to_sat'][idx]) > 0:
                 for vehiclepath in solution['sat_to_cus'][idx]:
+                    vehiclepath = [min(cust, self.n_customers - 1) for cust in vehiclepath]
+                    print(vehiclepath)
                     temp = sat_labels[idx] + '->'
                     for cus in vehiclepath:
+                        print(cus)
                         temp += cus_labels[self.failed_cus_idx[cus]] + '->'
                     temp += sat_labels[idx]
                     label_solution['sat_to_cus'][idx].append(temp)
