@@ -243,7 +243,7 @@ Demand_Folder = 'demand'
 folder_list = [Plot_Folder, Summarization_Folder, Demand_Folder]
 for file in os.listdir(Data_Folder):
     #path = os.path.join(Data_Folder, file) 
-    max_iteration = 2
+    max_iteration = 10
     neighborhood_size = 2
     sub_folder = file[:-4]
     ## Create Folders
