@@ -543,6 +543,7 @@ class TwoECVrp:
             if len(solution['depot_to_sat']) > 0:
                 current_time = self.depot_to_sat_distances[self.near_depot[i], i] + self.st_satellite[i] + self.start_time[i]
                 for vehicle in solution['sat_to_cus'][i]:
+                    vehicle = [min(cust, self.n_customers-1) for cust in vehicle]
                     T[vehicle[0]] += current_time + self.sat_to_cus_distances[i, vehicle[0]]
                     if len(vehicle) > 1:
                         for j in range(1, len(vehicle)):
@@ -718,6 +719,7 @@ class ReOptimization(TwoECVrp):
                 for vehicle in solution['sat_to_cus'][idx1]:
                     print(vehicle)
                     if len(vehicle) >= 1:
+                        vehicle = [min(cust, self.n_customers-1) for cust in vehicle]
                         edge_list.append((idx1+self.n_depot, self.failed_cus_idx[vehicle[0]]+self.n_depot+self.n_satellite))
                         edge_list.append((self.failed_cus_idx[vehicle[-1]] + self.n_depot + self.n_satellite, idx1+self.n_depot))
                         if len(vehicle) > 1:
